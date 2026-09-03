@@ -1,0 +1,12 @@
+{
+  "version": "0-foundation",
+  "urls": {
+    "liveManager": "https://seller-us.tiktok.com/live/manager"
+  },
+  "selectors": {
+    "commentRows": [],
+    "orderRows": [],
+    "violationRows": []
+  },
+  "notes": "Populate only after real-account smoke. Never guess selectors in production."
+}

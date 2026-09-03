@@ -1,0 +1,16 @@
+node_modules/
+.vite/
+out/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+worker-env/
+browser-profiles/
+__pycache__/
+*.pyc
+.DS_Store

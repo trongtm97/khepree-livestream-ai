@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "default-supervised",
+  "defaultAutomationMode": "SUPERVISED_AUTO",
+  "autoApproval": {
+    "confidenceThreshold": 0.92,
+    "delayMs": 3500,
+    "blockedRiskTags": [
+      "medical",
+      "legal",
+      "refund",
+      "warranty_dispute",
+      "unknown_product_fact",
+      "regulated_claim"
+    ]
+  }
+}

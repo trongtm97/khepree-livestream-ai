@@ -1,0 +1,317 @@
+[
+  {
+    "path": ".env.example",
+    "bytes": 680,
+    "sha256": "77650200f20e505481dfc0347aaece54863f0b386a21edd1dcc26e810003e5f2"
+  },
+  {
+    "path": ".gitignore",
+    "bytes": 144,
+    "sha256": "28329995e8c0573b34e13be027cc718908bb793a939de27f16f7f12ecbac2bcb"
+  },
+  {
+    "path": "AGENTS.md",
+    "bytes": 1241,
+    "sha256": "9af689ef753019e9a90725b0829b95e8876488eff77d3073d5c0069cda0f3b6f"
+  },
+  {
+    "path": "README.md",
+    "bytes": 2278,
+    "sha256": "a16e7789c9dfeca0b31b8baf4169214476a4cc10c79bac0e7f59a0b6232f7b03"
+  },
+  {
+    "path": "docs/ARCHITECTURE.md",
+    "bytes": 2447,
+    "sha256": "45e1d547f734599bc118c3291846db1c0b284447883abbf46286bc79d661e5c2"
+  },
+  {
+    "path": "docs/CONNECTOR_CONTRACTS.md",
+    "bytes": 803,
+    "sha256": "ed3adc514bb799c29ae276e5c318688604c317f1e23b84e642ec6872ef14b3a6"
+  },
+  {
+    "path": "docs/KHEPREE_INTEGRATION.md",
+    "bytes": 1410,
+    "sha256": "a37b551b80f5068f9c9549e2e10ee9c780d1937bd57572bc221438acbedb71bf"
+  },
+  {
+    "path": "docs/NEXT_IMPLEMENTATION_PHASES.md",
+    "bytes": 1113,
+    "sha256": "32b06055590a9639f268e717776cc6622f92999ee88c369e0369441da4acbb0a"
+  },
+  {
+    "path": "docs/PROJECT_STATE.md",
+    "bytes": 885,
+    "sha256": "fe16cfd3df951c24b33c59fef4174a559315e2a2c74302ac4e0a888004506172"
+  },
+  {
+    "path": "docs/THIRD_PARTY.md",
+    "bytes": 754,
+    "sha256": "96f1581ee716aa28877897a86729c65ff66cdfef207fd13d987fdf3176fc7204"
+  },
+  {
+    "path": "forge.config.ts",
+    "bytes": 1572,
+    "sha256": "118ecb1729149a07defe7c4884628a870889d6b0632ff5475e218fb06346d06e"
+  },
+  {
+    "path": "package.json",
+    "bytes": 1656,
+    "sha256": "4b5ec4922a57fc5098ad1c3064e7577c545336180a54401c9be6ad1d455fd89e"
+  },
+  {
+    "path": "resources/policy-packs/default.json",
+    "bytes": 333,
+    "sha256": "24984145fd3f09cbc02481ec852cb1bbdb242387adc0276d21b5f2016a35b03d"
+  },
+  {
+    "path": "resources/selector-packs/tiktok-live-manager.foundation.json",
+    "bytes": 293,
+    "sha256": "929fca7daa117008d6545acca543265882a795e0d54d832020180338d84a21cc"
+  },
+  {
+    "path": "scripts/dev-doctor.mjs",
+    "bytes": 707,
+    "sha256": "c1ab93455f5de374239ea4c25be445cbe4a303320920286cc67fffe0d403c5ca"
+  },
+  {
+    "path": "scripts/foundation-check.mjs",
+    "bytes": 1495,
+    "sha256": "e8626d2d84e4b99c6f5090fc41872fa7246d3677ded1401ce28846f2be4d08f3"
+  },
+  {
+    "path": "scripts/inject-demo-event.mjs",
+    "bytes": 113,
+    "sha256": "fab7b489cc1ff9c4243face788cca03086756e868bb40040241f70f869712c70"
+  },
+  {
+    "path": "src/main/app-container.ts",
+    "bytes": 1871,
+    "sha256": "1e47dbce33a1148bad1029e0919fa66428ad8250806cad004c97e959b0309def"
+  },
+  {
+    "path": "src/main/connectors/llm/gemini-worker-provider.ts",
+    "bytes": 4310,
+    "sha256": "cb7b04a031c9be29a2a1344fb60ac8859f6da6c86e836839a01fdaeb4a9ea140"
+  },
+  {
+    "path": "src/main/connectors/llm/mock-llm-provider.ts",
+    "bytes": 1776,
+    "sha256": "ae10efa3e49cff961810b7081b980022fdc67793c8c2a77899e9d8a9a950ac74"
+  },
+  {
+    "path": "src/main/connectors/llm/types.ts",
+    "bytes": 422,
+    "sha256": "be3ccab700b1622d11ef9daa91b4a385b47dc6bb127de3f9bb419aaf9234c035"
+  },
+  {
+    "path": "src/main/connectors/media/mock-media-provider.ts",
+    "bytes": 654,
+    "sha256": "7d952483edba63c618a6e047bf5c651c3538d6fb33bd44c87976043cb8156f9e"
+  },
+  {
+    "path": "src/main/connectors/media/types.ts",
+    "bytes": 248,
+    "sha256": "63865320b4d74a9e995643973848fcef334306a32052d84f968753d63d416f23"
+  },
+  {
+    "path": "src/main/connectors/tiktok/live-manager-observer.ts",
+    "bytes": 2402,
+    "sha256": "1ed497a29890697f1600c72a6220e33d16c5810c0eb18485281da874be3bb23f"
+  },
+  {
+    "path": "src/main/connectors/tiktok/tiktok-worker-provider.ts",
+    "bytes": 2179,
+    "sha256": "4fae9c0063552e77f57259a21bbfe058cfc641af24e56d3de4b77a13d0f79117"
+  },
+  {
+    "path": "src/main/connectors/tiktok/types.ts",
+    "bytes": 284,
+    "sha256": "575bfa809a89a63a1cade795585bacdcec75d8466eaf76f4a4fe9b76462e8599"
+  },
+  {
+    "path": "src/main/core/event-bus.ts",
+    "bytes": 518,
+    "sha256": "cbb73c34cf93d2591f422d12131f7b1435949791dd43badd058b19887c48e24c"
+  },
+  {
+    "path": "src/main/db/connection.ts",
+    "bytes": 1614,
+    "sha256": "7c0f0553dd3d317366af854499aac62db9113e4cba26d6b66561f6f585b7ab5e"
+  },
+  {
+    "path": "src/main/db/repositories.ts",
+    "bytes": 1886,
+    "sha256": "d71b79fbf74c95a08615b426268d5aecfc6201a6b70059a85427967b471faec9"
+  },
+  {
+    "path": "src/main/index.ts",
+    "bytes": 1271,
+    "sha256": "9fd4db256ea71aed25976a2c94f886fd6718b8f960d2b0b9c73baff344c0fd60"
+  },
+  {
+    "path": "src/main/ipc/register.ts",
+    "bytes": 2289,
+    "sha256": "b86a98ce6d40a3dd06849f7b8707adae0dfe794b4195d9c33f9665feed75b69e"
+  },
+  {
+    "path": "src/main/khepree/config.ts",
+    "bytes": 1178,
+    "sha256": "414821d5438d329bfe02078c41ca4dd4e9dede57387411d6e854456943870140"
+  },
+  {
+    "path": "src/main/khepree/device-identity-service.ts",
+    "bytes": 1961,
+    "sha256": "cdee19cd193ff7046aabc40890105aa634ccb9a2adc9f3e87d12ad2cc468e6dd"
+  },
+  {
+    "path": "src/main/khepree/heartbeat-service.ts",
+    "bytes": 747,
+    "sha256": "df98fc67d0180c705528c84331dfa96c569c8e7e28f8e5e90ae9167fd511ef10"
+  },
+  {
+    "path": "src/main/khepree/khepree-access-service.ts",
+    "bytes": 7200,
+    "sha256": "df673bcbf0302dd7986d2de49ba16666f7ef26f3e00fa68a5cac8f8a3e30b23a"
+  },
+  {
+    "path": "src/main/khepree/khepree-api-client.ts",
+    "bytes": 3102,
+    "sha256": "19e32f7169ec8a6b630e891848094a679b442ab798e6c542f33f801279cb8d56"
+  },
+  {
+    "path": "src/main/khepree/lease-verifier.ts",
+    "bytes": 1565,
+    "sha256": "063d6c821fe8ee16ce55d63b45c7af17699dded9043cbbded841132ca098f802"
+  },
+  {
+    "path": "src/main/khepree/pkce.ts",
+    "bytes": 600,
+    "sha256": "6649817c40f8f602e2a9a4035937d1a2aa169e1c09421159fd680a84724dfc79"
+  },
+  {
+    "path": "src/main/khepree/session-store.ts",
+    "bytes": 1392,
+    "sha256": "e64e798b18d2fc1b09e6ccdde7e79438fe21412e2de58969bb3579ae38379f0a"
+  },
+  {
+    "path": "src/main/live/approval-engine.ts",
+    "bytes": 2749,
+    "sha256": "e7df677ac0f59ad94a287a03e0a3d7371620c9af758b5075d3fc2accde76becf"
+  },
+  {
+    "path": "src/main/live/comment-priority.ts",
+    "bytes": 861,
+    "sha256": "e860ca4cd20c258e2f6be6261b8ed8c89b56f9c8a4beb1dd90a061b54af4c663"
+  },
+  {
+    "path": "src/main/live/live-orchestrator.ts",
+    "bytes": 4802,
+    "sha256": "d28d8d5d6113af7a07ba5882b409baf092e172ecb3dc17e724ed2143e450d55a"
+  },
+  {
+    "path": "src/main/live/policy-guard.ts",
+    "bytes": 1088,
+    "sha256": "796e91190b4a9977ebf190a31b34eea4fbc213a2e3f4260e90fdfe8d276e3167"
+  },
+  {
+    "path": "src/main/live/sales-state-machine.ts",
+    "bytes": 1306,
+    "sha256": "c05c879162c7e0c22395082f9462efa4982ae64479d7be4663ba6279f5a3162e"
+  },
+  {
+    "path": "src/main/window.ts",
+    "bytes": 1326,
+    "sha256": "4892a975ff5318a0789afea22d8ef23289fff1ba99ea8fd1e016cba158352309"
+  },
+  {
+    "path": "src/main/workers/http-worker-process.ts",
+    "bytes": 2480,
+    "sha256": "ebae8c8bce29d0bd99ca87123b3e800559e492e23e70606a401f0ed0666e1e57"
+  },
+  {
+    "path": "src/preload/index.ts",
+    "bytes": 1041,
+    "sha256": "715155b0034a4199ce352aa4be606387b2f3630889225f586d167632ebaf9a3b"
+  },
+  {
+    "path": "src/renderer/index.html",
+    "bytes": 317,
+    "sha256": "5ed87c6e36a3e3259bad7bf02dd9dd388298726819ee290afb575c0a9016b0f4"
+  },
+  {
+    "path": "src/renderer/main.tsx",
+    "bytes": 314,
+    "sha256": "b4d385c9d04c7c4bda34a47e582cb40fac14696bab3700291b0e097056731371"
+  },
+  {
+    "path": "src/renderer/ui/App.tsx",
+    "bytes": 10906,
+    "sha256": "a43c8640d83cb994e5937b5d686fba3a2561338ea9acebbacec788a79c068ec7"
+  },
+  {
+    "path": "src/renderer/ui/styles.css",
+    "bytes": 5815,
+    "sha256": "bf46e41f92d727efe37cf8d015d0b86ba953b5907d88afb21e9c031423013fa7"
+  },
+  {
+    "path": "src/shared/ipc.ts",
+    "bytes": 1309,
+    "sha256": "ce7b6f9c5e33c1b2e398fffc886400755b64306927ba2a175c17bce4ba6b15d7"
+  },
+  {
+    "path": "src/shared/khepree-contracts.ts",
+    "bytes": 2028,
+    "sha256": "dd828f3deb8708ca32dd24c984cfd9c404d024f94b967e427b562a0011516118"
+  },
+  {
+    "path": "src/shared/live-types.ts",
+    "bytes": 2094,
+    "sha256": "2a260c7dac8355a3375ca4ea36b70d7f4157610c519d89cd2c82cf3bff893327"
+  },
+  {
+    "path": "src/types/global.d.ts",
+    "bytes": 143,
+    "sha256": "729d26c9e676755ce4532fc60bd31f06043fbeb1d1c835cc3a933c10688631fa"
+  },
+  {
+    "path": "tsconfig.json",
+    "bytes": 453,
+    "sha256": "c131c99df3f042b22c99ddf4b74426cf24b974bbb4d334965a913af4ba9454c5"
+  },
+  {
+    "path": "vite.main.config.ts",
+    "bytes": 98,
+    "sha256": "7ee79e6fa7640656aad7632f39023003951a7f4abfbbac32459506d050e2b1e4"
+  },
+  {
+    "path": "vite.preload.config.ts",
+    "bytes": 98,
+    "sha256": "7ee79e6fa7640656aad7632f39023003951a7f4abfbbac32459506d050e2b1e4"
+  },
+  {
+    "path": "vite.renderer.config.ts",
+    "bytes": 132,
+    "sha256": "4c176a81060f72365d86a18a1f399fb37a00a80fb68dc8ffe38e60c5f2fa7cf3"
+  },
+  {
+    "path": "workers/gemini_worker/app.py",
+    "bytes": 3796,
+    "sha256": "a99916c6f7afba3337394d784e03c63329094628807ecf1c0613f9aecfe06915"
+  },
+  {
+    "path": "workers/gemini_worker/requirements.txt",
+    "bytes": 65,
+    "sha256": "14d63d78a6f83bdec17f97e36e846e09e118ea0787f57f81900c4608e5d238fa"
+  },
+  {
+    "path": "workers/tiktok_worker/app.py",
+    "bytes": 5838,
+    "sha256": "227d367eb806021ec3d77809a0fb9c55b02d1dd8dc93820cb54263f404bdb24a"
+  },
+  {
+    "path": "workers/tiktok_worker/requirements.txt",
+    "bytes": 53,
+    "sha256": "d87255188ff89b4fb2aef9344cb85439c8bac260c2d719fe0100c860b9d51886"
+  }
+]
