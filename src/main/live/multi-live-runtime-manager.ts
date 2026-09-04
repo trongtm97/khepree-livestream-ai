@@ -41,6 +41,11 @@ export type MultiLiveRuntimeManagerDeps = {
    * Required — do not fall back to Infinity.
    */
   capacity: LiveCapacityService;
+  /**
+   * Called when assertReadyToStart reserved resources but runtime.start() failed —
+   * release avatar GPU holds without treating the account as a full stop.
+   */
+  onReadyStartFailed?: (accountId: string) => void;
   /** Optional live resource counters (workers / browsers / AI queue). */
   getResourceExtras?: () => {
     activeTikTokWorkers: number;
@@ -163,7 +168,12 @@ export class MultiLiveRuntimeManager {
 
     this.deps.assertReadyToStart?.(account, runtime);
 
-    runtime.start();
+    try {
+      runtime.start();
+    } catch (error) {
+      this.deps.onReadyStartFailed?.(accountId);
+      throw error;
+    }
     const sessionId = runtime.sessionId;
     if (sessionId) this.deps.onLiveStarted?.(accountId, sessionId);
     return runtime;
@@ -246,6 +256,17 @@ export class MultiLiveRuntimeManager {
         const reasonCode = normalizeBatchErrorCode(error);
         if (isCapacityOrLicenseReason(reasonCode)) {
           skipped.push({ accountId, reasonCode: LIVE_BATCH_REASONS.CAPACITY_LIMIT });
+        } else if (
+          reasonCode === LIVE_BATCH_REASONS.AUDIO_ROUTING_NOT_READY ||
+          reasonCode === LIVE_BATCH_REASONS.OUTPUT_MODE_NOT_READY ||
+          reasonCode.startsWith("OUTPUT_MODE_NOT_READY")
+        ) {
+          skipped.push({
+            accountId,
+            reasonCode: reasonCode.startsWith("OUTPUT_MODE_NOT_READY")
+              ? LIVE_BATCH_REASONS.OUTPUT_MODE_NOT_READY
+              : LIVE_BATCH_REASONS.AUDIO_ROUTING_NOT_READY
+          });
         } else {
           failed.push({ accountId, reasonCode });
         }
@@ -478,6 +499,7 @@ export class MultiLiveRuntimeManager {
       currentProductId: runtime?.currentProductId ?? settings?.currentProductId,
       pendingApprovalCount: runtime?.listApprovals().length ?? 0,
       operatorMode: this.deps.operatorControl?.getMode(account.id) ?? "AI_ACTIVE",
+      scene: runtime?.getSceneState(),
       health: runtime?.health() ?? {
         component: `live-runtime:${account.id}`,
         status: "DISABLED",

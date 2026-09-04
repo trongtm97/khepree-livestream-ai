@@ -9,7 +9,8 @@ import {
   SettingsRepository,
   TikTokAccountRepository,
   AccountLiveSettingsRepository,
-  MediaProfileRepository
+  MediaProfileRepository,
+  AvatarAssetRepository
 } from "./db/repositories";
 import { LiveEventBus } from "./core/event-bus";
 import { AppEventHub } from "./core/app-event-hub";
@@ -26,10 +27,27 @@ import {
 } from "./connectors/tiktok/live-manager-manager";
 import { LiveManagerRegistry } from "./connectors/tiktok/live-manager-registry";
 import { MediaSessionFactory } from "./connectors/media/media-session-factory";
+import { ExternalLiveTalkingProvider } from "./connectors/media/avatar/external-livetalking-provider";
+import { MuseTalkLocalProvider } from "./connectors/media/avatar/musetalk-local-provider";
+import { AvatarLibraryService } from "./connectors/media/avatar/avatar-library-service";
+import {
+  isAvatarEngineConfigured,
+  isLiveTalkingEngineConfigured,
+  isMuseTalkEngineConfigured
+} from "../shared/media-contracts";
+import {
+  isOutputModeReady,
+  missingCapabilitiesForMode,
+  resolveMediaCapabilities
+} from "../shared/live-output-mode";
 import { OperatorControlService } from "./live/operator-control-service";
 import { CommentFeedService } from "./live/comment-feed-service";
 import { MultiLiveRuntimeManager } from "./live/multi-live-runtime-manager";
 import { AiRequestScheduler } from "./live/ai-request-scheduler";
+import {
+  capabilityFromAvatarEngine,
+  GpuMediaScheduler
+} from "./live/gpu-media-scheduler";
 import { LiveCapacityService } from "./live/live-capacity-service";
 import {
   createOsResourceGovernor,
@@ -68,6 +86,8 @@ export class AppContainer {
   readonly tiktokAccounts: TikTokAccountRepository;
   readonly accountLiveSettings: AccountLiveSettingsRepository;
   readonly mediaProfiles: MediaProfileRepository;
+  readonly avatarAssets: AvatarAssetRepository;
+  readonly avatarLibrary: AvatarLibraryService;
   /** Fan-in bus for UI comment feed (events forwarded from each LiveRuntime). */
   readonly eventBus = new LiveEventBus();
   /** Realtime UI notifications (no secrets). */
@@ -80,6 +100,11 @@ export class AppContainer {
    * Does not replace Gemini circuit breaker / session / models.
    */
   readonly aiScheduler: AiRequestScheduler;
+  /**
+   * Avatar GPU capacity — separate from AiRequestScheduler (Gemini).
+   * Admission before AVATAR_LIVE; suggests Voice Only when full.
+   */
+  readonly gpuMediaScheduler: GpuMediaScheduler;
   /** Per-account TikTok connectors (one worker process each). */
   readonly tiktok: TikTokConnectorRegistry;
   /** Per-account LIVE Manager browsers (one profile each). */
@@ -125,8 +150,10 @@ export class AppContainer {
     this.tiktokAccounts = new TikTokAccountRepository(this.db);
     this.accountLiveSettings = new AccountLiveSettingsRepository(this.db);
     this.mediaProfiles = new MediaProfileRepository(this.db);
+    this.avatarAssets = new AvatarAssetRepository(this.db);
 
     this.mediaFactory = new MediaSessionFactory({
+      appRoot: resolveAppRoot(),
       getProfile: (accountId) => {
         const profile = this.mediaProfiles.ensureForAccount(accountId);
         const settings = this.accountLiveSettings.ensure(accountId);
@@ -137,6 +164,16 @@ export class AppContainer {
           });
         }
         return profile;
+      },
+      createAvatar: (accountId) => {
+        const profile = this.mediaProfiles.ensureForAccount(accountId);
+        if (isMuseTalkEngineConfigured(profile.avatarEngine)) {
+          return new MuseTalkLocalProvider({ settings: profile.avatarEngine });
+        }
+        if (isLiveTalkingEngineConfigured(profile.avatarEngine)) {
+          return new ExternalLiveTalkingProvider({ settings: profile.avatarEngine });
+        }
+        return undefined;
       }
     });
 
@@ -171,6 +208,15 @@ export class AppContainer {
     });
 
     this.resourceGovernor = createOsResourceGovernor();
+    this.gpuMediaScheduler = new GpuMediaScheduler({
+      getGpuSnapshot: () => this.resourceGovernor.snapshot({
+        activeRuntimes: 0,
+        activeTikTokWorkers: 0,
+        activeBrowserContexts: 0,
+        aiQueueLength: 0
+      }).gpu
+      // maxAvatarSlots unset in production — VRAM/util from SystemResourceMonitor when known.
+    });
     this.capacity = new LiveCapacityService({
       getFeatures: () => this.khepree.publicState.features,
       isLicenseActive: () => this.khepree.publicState.status === "ACTIVE",
@@ -194,6 +240,40 @@ export class AppContainer {
         this.appEvents.emit("OPERATOR_CONTROL_CHANGED", accountId);
       },
       assertProductAccess: (feature) => this.khepree.assertProductAccess(feature),
+      assertReadyToStart: (account) => {
+        const settings = this.accountLiveSettings.ensure(account.id);
+        const profile = this.mediaProfiles.getByAccount(account.id);
+        const caps = resolveMediaCapabilities({
+          ttsStatus: "UNKNOWN",
+          audioOutputType: profile?.audioOutputType,
+          audioOutputDeviceId: profile?.audioOutputDeviceId,
+          avatarReady: isAvatarEngineConfigured(profile?.avatarEngine),
+          videoRouteReady:
+            isLiveTalkingEngineConfigured(profile?.avatarEngine) &&
+            profile?.avatarEngine.transport === "virtualcam"
+        });
+        if (!isOutputModeReady(settings.outputMode, caps)) {
+          const missing = missingCapabilitiesForMode(settings.outputMode, caps).join(",");
+          throw new Error(`OUTPUT_MODE_NOT_READY:${missing || settings.outputMode}`);
+        }
+        if (settings.outputMode === "AVATAR_LIVE") {
+          const gpuCap = capabilityFromAvatarEngine({
+            kind: profile?.avatarEngine?.kind ?? "none"
+          });
+          // Reserve slot now so concurrent starts cannot over-admit.
+          this.gpuMediaScheduler.registerSession({
+            accountId: account.id,
+            model: gpuCap.model,
+            targetFps: gpuCap.maxTargetFps,
+            priority: "speaking",
+            estimatedVramMb: gpuCap.estimatedVramMb,
+            qualityTier: gpuCap.qualityTier,
+            capacitySlots: gpuCap.capacitySlots,
+            modelLoaded: gpuCap.modelLoaded,
+            supportsIdlePrerecorded: gpuCap.supportsIdlePrerecorded
+          });
+        }
+      },
       capacity: this.capacity,
       getResourceExtras: () => ({
         activeTikTokWorkers: this.tiktok
@@ -215,12 +295,23 @@ export class AppContainer {
         this.aiScheduler.bindSession(accountId, sessionId);
         this.appEvents.emit("LIVE_UPDATED", accountId);
       },
+      onReadyStartFailed: (accountId) => {
+        this.gpuMediaScheduler.unregisterSession(accountId);
+      },
       onLiveStopped: (accountId) => {
+        this.gpuMediaScheduler.unregisterSession(accountId);
         this.aiScheduler.unbindSession(accountId);
         this.aiScheduler.cancelAccount(accountId);
         this.appEvents.emit("LIVE_UPDATED", accountId);
       }
     });
+
+    this.avatarLibrary = new AvatarLibraryService(
+      this.avatarAssets,
+      this.mediaProfiles,
+      this.multiLive,
+      app.getPath("userData")
+    );
 
     // Restore focused account (persisted); unpackaged may fall back to first account for UI.
     const savedFocus = this.settings.getFocusedAccountId();

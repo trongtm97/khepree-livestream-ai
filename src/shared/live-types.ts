@@ -1,6 +1,8 @@
 import type { AccountTikTokState } from "./tiktok-contracts";
 import type { AccountLiveManagerState } from "./live-manager-contracts";
 import type { OperatorControlMode } from "./operator-control";
+import type { LiveOutputMode, MediaCapabilities } from "./live-output-mode";
+import type { SceneEnginePublicState } from "./scene-types";
 
 export type AutomationMode =
   | "MANUAL_ASSIST"
@@ -59,6 +61,8 @@ export interface TikTokAccount {
 export interface AccountLiveSettings {
   accountId: string;
   automationMode: AutomationMode;
+  /** What leaves the PC toward TikTok / local preview. Default ASSIST_ONLY. */
+  outputMode: LiveOutputMode;
   currentProductId?: string;
   mediaProfileId?: string;
   enabled: boolean;
@@ -98,6 +102,22 @@ export interface AccountLiveSnapshot {
   health: RuntimeHealth;
   /** Operator vs AI — HUMAN_TAKEOVER mutes speak without stopping TikTok. */
   operatorMode?: OperatorControlMode;
+  /** Livestream output intent (assist / voice / avatar). */
+  outputMode?: LiveOutputMode;
+  /** Capability bits for the focused mode's readiness. */
+  mediaCapabilities?: MediaCapabilities;
+  /** Current scene preview state (local compositor — no virtual cam yet). */
+  scene?: SceneEnginePublicState;
+  /**
+   * Per-account TTS audio routing (preview vs livestream cable).
+   * voice-stream without device → startLive should block for VOICE_ONLY / AVATAR_LIVE.
+   */
+  audioRouting?: {
+    mode: "assistant-only" | "voice-stream";
+    outputType: "local-preview" | "windows-endpoint";
+    deviceId?: string;
+    ready: boolean;
+  };
   /** Per-account TikTok connector state when registry has one. */
   tiktok?: AccountTikTokState;
   /** Per-account LIVE Manager browser state when registry has one. */
@@ -204,6 +224,13 @@ export interface ProductDNA {
   description?: string;
   priceText?: string;
   currency?: string;
+  /**
+   * Real product image file paths from operator / import — never AI-generated.
+   * Scene compositor may show these; empty → text overlays only.
+   */
+  imagePaths?: string[];
+  /** Real product video paths (optional). */
+  videoPaths?: string[];
   /** Điểm nổi bật — AI chỉ được nêu khi có trong DNA. */
   facts: string[];
   benefits: string[];

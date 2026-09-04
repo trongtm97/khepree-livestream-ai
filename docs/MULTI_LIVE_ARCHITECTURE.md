@@ -1,6 +1,6 @@
 # Multi-Live Architecture (domain slice)
 
-Status: **usable multi-live core + operator hardening (milestone 0.3.x)** — domain, runtime, registries, account-aware IPC, Live Center, capacity, voice sessions, takeover, Vitest blockers. **Not** a production claim.
+Status: **usable multi-live core + operator hardening; media/avatar foundation under milestone 0.4.x** — domain, runtime, registries, account-aware IPC, Live Center, capacity, voice/avatar sessions, takeover, Vitest blockers. **Not** a production claim.
 
 ## Goals
 

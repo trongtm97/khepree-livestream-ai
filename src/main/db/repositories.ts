@@ -18,7 +18,21 @@ import type {
   ProductDNA,
   TikTokAccount
 } from "../../shared/live-types";
-import type { MediaProfile, TtsProviderId } from "../../shared/media-contracts";
+import {
+  DEFAULT_LIVE_OUTPUT_MODE,
+  normalizeLiveOutputMode,
+  type LiveOutputMode
+} from "../../shared/live-output-mode";
+import type {
+  AudioOutputType,
+  AvatarEngineSettings,
+  MediaProfile,
+  TtsProviderId
+} from "../../shared/media-contracts";
+import {
+  DEFAULT_AVATAR_ENGINE,
+  normalizeAvatarEngine
+} from "../../shared/media-contracts";
 import { normalizeProduct } from "../../shared/product-dna";
 import {
   assertSafeProfileKey,
@@ -27,6 +41,13 @@ import {
   normalizeTikTokUsername,
   type CreateTikTokAccountInput
 } from "../../shared/tiktok-account";
+import type {
+  AvatarAsset,
+  AvatarAssetEngine,
+  AvatarAssetStatus
+} from "../../shared/avatar-assets";
+import { resolveProviderForEngine } from "../../shared/avatar-assets";
+import { randomUUID } from "node:crypto";
 import { getSchemaVersion } from "./connection";
 
 const UI_LOCALE_KEY = "ui.locale";
@@ -500,6 +521,7 @@ export class TikTokAccountRepository {
 type SettingsRow = {
   account_id: string;
   automation_mode: string;
+  output_mode?: string | null;
   current_product_id: string | null;
   media_profile_id: string | null;
   enabled: number;
@@ -510,6 +532,7 @@ function mapSettingsRow(row: SettingsRow): AccountLiveSettings {
   return {
     accountId: row.account_id,
     automationMode: row.automation_mode as AutomationMode,
+    outputMode: normalizeLiveOutputMode(row.output_mode),
     currentProductId: row.current_product_id ?? undefined,
     mediaProfileId: row.media_profile_id ?? undefined,
     enabled: row.enabled === 1,
@@ -527,13 +550,14 @@ export class AccountLiveSettingsRepository {
     return row ? mapSettingsRow(row) : undefined;
   }
 
-  /** Create default settings if missing (SUPERVISED_AUTO). */
+  /** Create default settings if missing (SUPERVISED_AUTO + ASSIST_ONLY). */
   ensure(accountId: string): AccountLiveSettings {
     const existing = this.get(accountId);
     if (existing) return existing;
     return this.upsert({
       accountId,
       automationMode: DEFAULT_ACCOUNT_AUTOMATION_MODE,
+      outputMode: DEFAULT_LIVE_OUTPUT_MODE,
       enabled: true
     });
   }
@@ -547,9 +571,13 @@ export class AccountLiveSettingsRepository {
     if (!account) throw new Error("TIKTOK_ACCOUNT_NOT_FOUND");
 
     const prev = this.get(input.accountId);
+    const outputMode: LiveOutputMode = normalizeLiveOutputMode(
+      input.outputMode ?? prev?.outputMode ?? DEFAULT_LIVE_OUTPUT_MODE
+    );
     const next: AccountLiveSettings = {
       accountId: input.accountId,
       automationMode: input.automationMode ?? prev?.automationMode ?? DEFAULT_ACCOUNT_AUTOMATION_MODE,
+      outputMode,
       currentProductId:
         input.currentProductId !== undefined
           ? input.currentProductId || undefined
@@ -566,10 +594,11 @@ export class AccountLiveSettingsRepository {
       .prepare(
         `
       INSERT INTO account_live_settings(
-        account_id, automation_mode, current_product_id, media_profile_id, enabled, updated_at
-      ) VALUES(?, ?, ?, ?, ?, ?)
+        account_id, automation_mode, output_mode, current_product_id, media_profile_id, enabled, updated_at
+      ) VALUES(?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(account_id) DO UPDATE SET
         automation_mode=excluded.automation_mode,
+        output_mode=excluded.output_mode,
         current_product_id=excluded.current_product_id,
         media_profile_id=excluded.media_profile_id,
         enabled=excluded.enabled,
@@ -579,6 +608,7 @@ export class AccountLiveSettingsRepository {
       .run(
         next.accountId,
         next.automationMode,
+        next.outputMode,
         next.currentProductId ?? null,
         next.mediaProfileId ?? null,
         next.enabled ? 1 : 0,
@@ -594,8 +624,25 @@ type MediaProfileRow = {
   provider_id: string;
   voice_id: string | null;
   rate: number;
+  audio_output_type?: string | null;
+  audio_output_device_id?: string | null;
+  avatar_engine_json?: string | null;
+  selected_avatar_id?: string | null;
   updated_at: string;
 };
+
+function normalizeAudioOutputType(raw: string | null | undefined): AudioOutputType {
+  return raw === "windows-endpoint" ? "windows-endpoint" : "local-preview";
+}
+
+function parseAvatarEngineJson(raw: string | null | undefined): AvatarEngineSettings {
+  if (!raw || raw === "{}") return { ...DEFAULT_AVATAR_ENGINE };
+  try {
+    return normalizeAvatarEngine(JSON.parse(raw) as AvatarEngineSettings);
+  } catch {
+    return { ...DEFAULT_AVATAR_ENGINE };
+  }
+}
 
 function mapMediaProfile(row: MediaProfileRow): MediaProfile {
   return {
@@ -604,12 +651,23 @@ function mapMediaProfile(row: MediaProfileRow): MediaProfile {
     providerId: (row.provider_id as TtsProviderId) || "windows-sapi",
     voiceId: row.voice_id ?? undefined,
     rate: typeof row.rate === "number" && Number.isFinite(row.rate) ? row.rate : 1,
+    audioOutputType: normalizeAudioOutputType(row.audio_output_type),
+    audioOutputDeviceId: row.audio_output_device_id ?? undefined,
+    avatarEngine: parseAvatarEngineJson(row.avatar_engine_json),
+    selectedAvatarId: row.selected_avatar_id ?? undefined,
     updatedAt: row.updated_at
   };
 }
 
 export class MediaProfileRepository {
   constructor(private readonly db: Database.Database) {}
+
+  list(): MediaProfile[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM media_profiles ORDER BY account_id`)
+      .all() as MediaProfileRow[];
+    return rows.map(mapMediaProfile);
+  }
 
   get(id: string): MediaProfile | undefined {
     const row = this.db
@@ -635,12 +693,16 @@ export class MediaProfileRepository {
       accountId,
       providerId,
       rate: 1,
+      audioOutputType: "local-preview",
+      avatarEngine: { ...DEFAULT_AVATAR_ENGINE },
       updatedAt: new Date().toISOString()
     };
     this.db
       .prepare(
-        `INSERT INTO media_profiles (id, account_id, provider_id, voice_id, rate, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO media_profiles (
+           id, account_id, provider_id, voice_id, rate,
+           audio_output_type, audio_output_device_id, avatar_engine_json, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profile.id,
@@ -648,6 +710,9 @@ export class MediaProfileRepository {
         profile.providerId,
         null,
         profile.rate,
+        profile.audioOutputType,
+        null,
+        JSON.stringify(profile.avatarEngine),
         profile.updatedAt
       );
     return profile;
@@ -659,6 +724,24 @@ export class MediaProfileRepository {
     const prev = this.ensureForAccount(input.accountId);
     const rateRaw = input.rate !== undefined ? input.rate : prev.rate;
     const rate = Math.min(2, Math.max(0.5, Number.isFinite(rateRaw) ? rateRaw : 1));
+    const audioOutputType =
+      input.audioOutputType !== undefined
+        ? normalizeAudioOutputType(input.audioOutputType)
+        : prev.audioOutputType;
+    let audioOutputDeviceId =
+      input.audioOutputDeviceId !== undefined
+        ? input.audioOutputDeviceId || undefined
+        : prev.audioOutputDeviceId;
+    if (audioOutputType === "local-preview") {
+      audioOutputDeviceId = undefined;
+    }
+    const avatarEngine = normalizeAvatarEngine(
+      input.avatarEngine !== undefined ? input.avatarEngine : prev.avatarEngine
+    );
+    const selectedAvatarId =
+      input.selectedAvatarId !== undefined
+        ? input.selectedAvatarId || undefined
+        : prev.selectedAvatarId;
     const next: MediaProfile = {
       id: prev.id,
       accountId: input.accountId,
@@ -666,22 +749,192 @@ export class MediaProfileRepository {
       voiceId:
         input.voiceId !== undefined ? input.voiceId || undefined : prev.voiceId,
       rate,
+      audioOutputType,
+      audioOutputDeviceId,
+      avatarEngine,
+      selectedAvatarId,
       updatedAt: new Date().toISOString()
     };
     this.db
       .prepare(
         `UPDATE media_profiles
-         SET provider_id=?, voice_id=?, rate=?, updated_at=?
+         SET provider_id=?, voice_id=?, rate=?,
+             audio_output_type=?, audio_output_device_id=?,
+             avatar_engine_json=?, selected_avatar_id=?, updated_at=?
          WHERE id=?`
       )
       .run(
         next.providerId,
         next.voiceId ?? null,
         next.rate,
+        next.audioOutputType,
+        next.audioOutputDeviceId ?? null,
+        JSON.stringify(next.avatarEngine),
+        next.selectedAvatarId ?? null,
         next.updatedAt,
         next.id
       );
     return next;
+  }
+}
+
+type AvatarAssetRow = {
+  id: string;
+  name: string;
+  engine: string;
+  provider: string;
+  status: string;
+  source_path: string;
+  processed_path: string | null;
+  preview_image_path: string | null;
+  version: number;
+  checksum: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function normalizeAvatarAssetStatus(raw: string): AvatarAssetStatus {
+  if (
+    raw === "READY" ||
+    raw === "NEEDS_PROCESSING" ||
+    raw === "PROCESSING" ||
+    raw === "ERROR"
+  ) {
+    return raw;
+  }
+  return "NEEDS_PROCESSING";
+}
+
+function normalizeAvatarAssetEngine(raw: string): AvatarAssetEngine {
+  if (raw === "musetalk-local" || raw === "livetalking" || raw === "auto") return raw;
+  return "auto";
+}
+
+function mapAvatarAsset(row: AvatarAssetRow): AvatarAsset {
+  return {
+    id: row.id,
+    name: row.name,
+    engine: normalizeAvatarAssetEngine(row.engine),
+    status: normalizeAvatarAssetStatus(row.status),
+    sourcePath: row.source_path,
+    processedPath: row.processed_path ?? undefined,
+    previewImagePath: row.preview_image_path ?? undefined,
+    provider: row.provider,
+    version: row.version || 1,
+    checksum: row.checksum,
+    errorMessage: row.error_message ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export class AvatarAssetRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  list(): AvatarAsset[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM avatar_assets ORDER BY updated_at DESC`)
+      .all() as AvatarAssetRow[];
+    return rows.map(mapAvatarAsset);
+  }
+
+  get(id: string): AvatarAsset | undefined {
+    const row = this.db
+      .prepare(`SELECT * FROM avatar_assets WHERE id=?`)
+      .get(id) as AvatarAssetRow | undefined;
+    return row ? mapAvatarAsset(row) : undefined;
+  }
+
+  insert(asset: AvatarAsset): AvatarAsset {
+    this.db
+      .prepare(
+        `INSERT INTO avatar_assets (
+           id, name, engine, provider, status, source_path, processed_path,
+           preview_image_path, version, checksum, error_message, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        asset.id,
+        asset.name,
+        asset.engine,
+        asset.provider,
+        asset.status,
+        asset.sourcePath,
+        asset.processedPath ?? null,
+        asset.previewImagePath ?? null,
+        asset.version,
+        asset.checksum,
+        asset.errorMessage ?? null,
+        asset.createdAt,
+        asset.updatedAt
+      );
+    return asset;
+  }
+
+  update(asset: AvatarAsset): AvatarAsset {
+    this.db
+      .prepare(
+        `UPDATE avatar_assets SET
+           name=?, engine=?, provider=?, status=?, source_path=?, processed_path=?,
+           preview_image_path=?, version=?, checksum=?, error_message=?, updated_at=?
+         WHERE id=?`
+      )
+      .run(
+        asset.name,
+        asset.engine,
+        asset.provider,
+        asset.status,
+        asset.sourcePath,
+        asset.processedPath ?? null,
+        asset.previewImagePath ?? null,
+        asset.version,
+        asset.checksum,
+        asset.errorMessage ?? null,
+        asset.updatedAt,
+        asset.id
+      );
+    return asset;
+  }
+
+  delete(id: string): void {
+    this.db.prepare(`DELETE FROM avatar_assets WHERE id=?`).run(id);
+  }
+
+  /** Accounts whose media profile currently selects this avatar. */
+  accountsUsingAvatar(avatarId: string): string[] {
+    const rows = this.db
+      .prepare(`SELECT account_id FROM media_profiles WHERE selected_avatar_id=?`)
+      .all(avatarId) as Array<{ account_id: string }>;
+    return rows.map((r) => r.account_id);
+  }
+
+  newId(): string {
+    return `av_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  }
+
+  createDraft(input: {
+    name: string;
+    engine: AvatarAssetEngine;
+    sourcePath: string;
+    checksum: string;
+    previewImagePath?: string;
+  }): AvatarAsset {
+    const now = new Date().toISOString();
+    const asset: AvatarAsset = {
+      id: this.newId(),
+      name: input.name.trim() || "Avatar",
+      engine: input.engine,
+      provider: resolveProviderForEngine(input.engine),
+      status: "NEEDS_PROCESSING",
+      sourcePath: input.sourcePath,
+      previewImagePath: input.previewImagePath,
+      version: 1,
+      checksum: input.checksum,
+      createdAt: now,
+      updatedAt: now
+    };
+    return this.insert(asset);
   }
 }
 

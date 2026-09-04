@@ -261,13 +261,27 @@ export const PAGE_GUIDES: PageGuide[] = [
   },
   {
     pageId: "avatar",
-    title: { vi: "Hướng dẫn: Nhân vật & Giọng nói", en: "Guide: Character & voice" },
+    title: { vi: "Hướng dẫn: Nhân vật AI", en: "Guide: AI character" },
     sections: [
       {
-        heading: { vi: "Sắp có", en: "Coming soon" },
+        heading: { vi: "Thư viện nhân vật", en: "Character library" },
         body: {
-          vi: "TTS và camera AI chưa gắn. Trạng thái trên Tổng quan phản ánh đúng điều đó.",
-          en: "TTS and AI camera are not connected. Overview status reflects that honestly."
+          vi: "Mỗi thẻ hiện ảnh xem thử, tên, engine và trạng thái (Sẵn sàng / Cần xử lý / Đang xử lý / Lỗi). Bấm «Tạo nhân vật» để mở wizard.",
+          en: "Each card shows preview, name, engine, and status (Ready / Needs processing / Processing / Error). Click «Create character» for the wizard."
+        }
+      },
+      {
+        heading: { vi: "Giọng nói", en: "Voice" },
+        body: {
+          vi: "Tab «Giọng nói» vẫn chỉnh TTS và âm thanh livestream theo từng gian.",
+          en: "The «Voice» tab still configures TTS and livestream audio per shop."
+        }
+      },
+      {
+        heading: { vi: "Bài viết chi tiết", en: "Full article" },
+        body: {
+          vi: "Mở Help Center → «Tạo nhân vật AI từ video».",
+          en: "Open Help Center → «Create an AI character from video»."
         }
       }
     ]
@@ -288,6 +302,114 @@ export const PAGE_GUIDES: PageGuide[] = [
 ];
 
 export const HELP_ARTICLES: HelpArticle[] = [
+  {
+    id: "avatar-create",
+    title: {
+      vi: "Tạo nhân vật AI từ video",
+      en: "Create an AI character from video"
+    },
+    summary: {
+      vi: "Chọn video mặt rõ, xử lý một lần, thử nói mẫu, rồi lưu vào thư viện — không cần biết thông số model.",
+      en: "Pick a clear face video, process once, try a sample line, then save — no model jargon required."
+    },
+    keywords: [
+      "avatar",
+      "nhân vật",
+      "character",
+      "video",
+      "preprocess",
+      "mặt",
+      "face",
+      "wizard",
+      "thư viện",
+      "library"
+    ],
+    sections: [
+      {
+        heading: { vi: "Video thế nào là tốt?", en: "What makes a good video?" },
+        body: {
+          vi: "Nhìn rõ mặt, ánh sáng đủ, không che miệng, và đủ dài để nhân vật nói tự nhiên. Không cần chỉnh thông số kỹ thuật.",
+          en: "Face clearly visible, good light, mouth uncovered, and long enough for natural speech. You do not set model parameters."
+        }
+      },
+      {
+        heading: { vi: "Các bước wizard", en: "Wizard steps" },
+        body: {
+          vi: "1) Chọn video → 2) Xem trước → 3) Engine (mặc định tự động) → 4) Xử lý có progress → 5) Nói câu mẫu → 6) Lưu. UI không đóng băng khi xử lý.",
+          en: "1) Choose video → 2) Preview → 3) Engine (auto by default) → 4) Process with progress → 5) Sample speech → 6) Save. The UI stays responsive while processing."
+        }
+      },
+      {
+        heading: { vi: "Xóa & nhân bản", en: "Delete & duplicate" },
+        body: {
+          vi: "Không xóa được nhân vật đang dùng trong livestream. Nhân bản chỉ copy hồ sơ — không copy cache model nặng nếu không cần.",
+          en: "You cannot delete a character used in a live session. Duplicate copies the profile — it does not copy heavy model cache unless needed."
+        }
+      },
+      {
+        heading: { vi: "Đổi video nguồn", en: "When the source video changes" },
+        body: {
+          vi: "Nếu file nguồn thay đổi, Khepree nhận ra qua checksum và đánh dấu «Cần xử lý» lại — không dùng cache cũ.",
+          en: "If the source file changes, Khepree detects it via checksum and marks the character «Needs processing» — old cache is not reused."
+        }
+      }
+    ]
+  },
+  {
+    id: "audio-routing-tiktok",
+    title: {
+      vi: "Thiết lập âm thanh AI cho TikTok",
+      en: "Set up AI audio for TikTok"
+    },
+    summary: {
+      vi: "Hướng dẫn người bán đưa giọng AI vào livestream qua thiết bị âm thanh riêng — không cần biết thuật ngữ kỹ thuật.",
+      en: "Seller guide to route AI voice into livestream via a dedicated audio device — no jargon required."
+    },
+    keywords: [
+      "âm thanh",
+      "microphone",
+      "mic",
+      "cable",
+      "ảo",
+      "virtual",
+      "tiktok",
+      "livestream",
+      "giọng",
+      "audio",
+      "routing",
+      "loa"
+    ],
+    sections: [
+      {
+        heading: { vi: "Vì sao cần thiết bị riêng?", en: "Why a dedicated device?" },
+        body: {
+          vi: "TikTok nhận giọng AI giống như một microphone. Nếu phát ra loa máy, khách trên livestream không nghe được (hoặc bạn bị lộ giọng AI ngoài ý muốn).",
+          en: "TikTok treats AI audio like a microphone input. Playing only on PC speakers means viewers hear nothing (or you leak AI speech locally by accident)."
+        }
+      },
+      {
+        heading: { vi: "Làm theo wizard", en: "Follow the wizard" },
+        body: {
+          vi: "Vào Nhân vật & Giọng nói → chọn shop → «Thiết lập âm thanh có hướng dẫn». Chọn gửi vào Livestream TikTok, chọn thiết bị cho shop đó, phát thử, rồi chỉnh microphone trong TikTok LIVE Manager cho khớp.",
+          en: "Open Character & voice → pick the shop → «Guided audio setup». Choose send into TikTok Livestream, pick that shop’s device, play a sample, then match the microphone in TikTok LIVE Manager."
+        }
+      },
+      {
+        heading: { vi: "Mỗi shop một thiết bị", en: "One device per shop" },
+        body: {
+          vi: "Không dùng chung một thiết bị cho hai shop. Phần mềm sẽ cảnh báo nếu bạn chọn trùng — tránh hai livestream phát nhầm giọng.",
+          en: "Do not share one device across two shops. The app warns on collisions so two livestreams do not mix voices."
+        }
+      },
+      {
+        heading: { vi: "Chỉ nghe thử trên máy", en: "PC preview only" },
+        body: {
+          vi: "Nếu bạn chưa livestream, chọn «Chỉ nghe thử trên máy». Khi đó không bắt buộc cable ảo để bật trợ lý.",
+          en: "If you are not streaming yet, choose «Preview on this PC only». A virtual cable is not required to run the assistant."
+        }
+      }
+    ]
+  },
   {
     id: "getting-started",
     title: { vi: "Bắt đầu sử dụng", en: "Getting started" },

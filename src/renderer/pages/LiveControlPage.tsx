@@ -4,6 +4,8 @@ import { useAppShell } from "../app/AppShellContext";
 import { ApprovalQueue } from "../components/live/ApprovalQueue";
 import { LiveControls } from "../components/live/LiveControls";
 import { LiveStatusCards } from "../components/live/LiveStatusCards";
+import { ScenePreviewPanel } from "../components/live/ScenePreviewPanel";
+import { MediaReadinessCenter } from "../components/live/MediaReadinessCenter";
 import { TikTokConnectorPanel } from "../components/connections/TikTokConnectorPanel";
 import { LiveManagerPanel } from "../components/connections/LiveManagerPanel";
 import { labelAutomationMode, labelLiveState } from "../i18n";
@@ -11,6 +13,7 @@ import type { MessageKey } from "../i18n/types";
 
 type DetailTab =
   | "overview"
+  | "media"
   | "comments"
   | "approvals"
   | "products"
@@ -69,6 +72,7 @@ export function LiveControlPage({ snapshot }: { snapshot: AppSnapshot }) {
 
   const tabs: { id: DetailTab; labelKey: MessageKey }[] = [
     { id: "overview", labelKey: "accountDetail.tab.overview" },
+    { id: "media", labelKey: "accountDetail.tab.media" },
     { id: "comments", labelKey: "accountDetail.tab.comments" },
     { id: "approvals", labelKey: "accountDetail.tab.approvals" },
     { id: "products", labelKey: "accountDetail.tab.products" },
@@ -130,10 +134,17 @@ export function LiveControlPage({ snapshot }: { snapshot: AppSnapshot }) {
 
       {detailTab === "overview" ? (
         <>
-          <LiveStatusCards snapshot={snapshot} />
-          <LiveControls snapshot={snapshot} />
+          <div className="accountDetailOverviewGrid">
+            <ScenePreviewPanel accountId={accountId} focused />
+            <div>
+              <LiveStatusCards snapshot={snapshot} />
+              <LiveControls snapshot={snapshot} />
+            </div>
+          </div>
         </>
       ) : null}
+
+      {detailTab === "media" ? <MediaReadinessCenter accountId={accountId} /> : null}
 
       {detailTab === "comments" ? (
         <section className="panel">

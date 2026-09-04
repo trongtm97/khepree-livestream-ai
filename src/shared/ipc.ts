@@ -26,24 +26,68 @@ import type {
 import type { AppEvent } from "./app-events";
 import type { SystemResourcePublicSnapshot } from "./system-resources";
 import type {
+  AudioDeviceInfo,
+  AudioOutputType,
+  AvatarEngineSettings,
+  AvatarHealth,
   MediaEnginePublicState,
   MediaProfile,
   TtsVoiceInfo
 } from "./media-contracts";
+import type {
+  AvatarAsset,
+  AvatarAssetEngine,
+  AvatarPreprocessJob
+} from "./avatar-assets";
+import type {
+  SceneEnginePublicState,
+  SceneFrame,
+  SceneLayoutId
+} from "./scene-types";
 import type { OperatorControlPublicSnapshot } from "./operator-control";
+import type {
+  MediaDryRunResult,
+  MediaMultiDryRunResult,
+  MediaReadinessReport
+} from "./media-readiness";
 
 export type {
   LiveStartReadyBatchResult,
   LiveStopAllBatchResult,
   LiveBatchAccountResult
 } from "./live-batch";
+export type {
+  MediaDryRunResult,
+  MediaMultiDryRunResult,
+  MediaReadinessReport,
+  MediaReadinessItem,
+  MediaReadinessStatus,
+  MediaReadinessItemId
+} from "./media-readiness";
 export type { AppEvent, AppEventType } from "./app-events";
 export type {
+  AudioDeviceInfo,
+  AudioOutputType,
+  AvatarEngineSettings,
+  AvatarHealth,
+  LiveTalkingTransport,
   MediaEnginePublicState,
   MediaProfile,
   TtsVoiceInfo,
   TtsProviderId
 } from "./media-contracts";
+export type {
+  AvatarAsset,
+  AvatarAssetEngine,
+  AvatarAssetStatus,
+  AvatarPreprocessJob
+} from "./avatar-assets";
+export type {
+  SceneFrame,
+  SceneEnginePublicState,
+  SceneLayoutId,
+  SceneResolution
+} from "./scene-types";
 export type {
   OperatorControlPublicSnapshot,
   OperatorControlMode,
@@ -63,6 +107,7 @@ export const IPC = {
   LIVE_START_READY_BATCH: "live:start-ready-batch",
   LIVE_STOP_ALL: "live:stop-all",
   LIVE_SET_MODE: "live:set-mode",
+  LIVE_SET_OUTPUT_MODE: "live:set-output-mode",
   LIVE_ACCOUNT_SNAPSHOT: "live:account-snapshot",
   LIVE_MULTI_SNAPSHOT: "live:multi-snapshot",
   COMMENTS_SNAPSHOT: "comments:snapshot",
@@ -110,10 +155,32 @@ export const IPC = {
   SETTINGS_SET_LOCALE: "settings:set-locale",
   SETTINGS_SET_ONBOARDING: "settings:set-onboarding",
   MEDIA_LIST_VOICES: "media:list-voices",
+  MEDIA_LIST_AUDIO_DEVICES: "media:list-audio-devices",
   MEDIA_GET_PROFILE: "media:get-profile",
   MEDIA_SET_PROFILE: "media:set-profile",
   MEDIA_PREVIEW: "media:preview",
   MEDIA_ENGINE_STATUS: "media:engine-status",
+  MEDIA_PROBE_AVATAR_ENGINE: "media:probe-avatar-engine",
+  AVATAR_LIST: "avatar:list",
+  AVATAR_GET: "avatar:get",
+  AVATAR_CREATE: "avatar:create",
+  AVATAR_RENAME: "avatar:rename",
+  AVATAR_DUPLICATE: "avatar:duplicate",
+  AVATAR_DELETE: "avatar:delete",
+  AVATAR_PREPROCESS: "avatar:preprocess",
+  AVATAR_PREPROCESS_JOB: "avatar:preprocess-job",
+  AVATAR_PICK_VIDEO: "avatar:pick-video",
+  AVATAR_SELECT_FOR_ACCOUNT: "avatar:select-for-account",
+  AVATAR_TEST_SPEAK: "avatar:test-speak",
+  SCENE_LIST: "scene:list",
+  SCENE_GET_STATE: "scene:get-state",
+  SCENE_SET_MANUAL: "scene:set-manual",
+  SCENE_CLEAR_OVERRIDE: "scene:clear-override",
+  SCENE_SET_RESOLUTION: "scene:set-resolution",
+  SCENE_PREVIEW_FRAME: "scene:preview-frame",
+  MEDIA_READINESS_GET: "media:readiness-get",
+  MEDIA_DRY_RUN: "media:dry-run",
+  MEDIA_MULTI_DRY_RUN: "media:multi-dry-run",
   OPERATOR_TAKEOVER: "operator:takeover",
   OPERATOR_EXIT_TAKEOVER: "operator:exit-takeover",
   OPERATOR_TOGGLE_TAKEOVER: "operator:toggle-takeover",
@@ -188,6 +255,10 @@ export interface RendererApi {
   /** Main-process batch: stop all AI lives (not TikTok / browser). */
   stopAllLives(): Promise<LiveStopAllBatchResult>;
   setAutomationMode(accountId: string, mode: AutomationMode): Promise<void>;
+  setLiveOutputMode(
+    accountId: string,
+    mode: import("./live-output-mode").LiveOutputMode
+  ): Promise<void>;
 
   resolveApproval(
     accountId: string,
@@ -253,13 +324,68 @@ export interface RendererApi {
   clearGeminiSession(): Promise<GeminiPublicState>;
 
   listMediaVoices(): Promise<TtsVoiceInfo[]>;
+  listAudioDevices(): Promise<AudioDeviceInfo[]>;
   getMediaProfile(accountId: string): Promise<MediaProfile>;
   setMediaProfile(
     accountId: string,
-    patch: { voiceId?: string | null; rate?: number }
+    patch: {
+      voiceId?: string | null;
+      rate?: number;
+      audioOutputType?: AudioOutputType;
+      audioOutputDeviceId?: string | null;
+      allowDeviceCollision?: boolean;
+      avatarEngine?: AvatarEngineSettings;
+    }
   ): Promise<MediaProfile>;
   previewMediaVoice(accountId: string, text?: string): Promise<void>;
   getMediaEngineStatus(): Promise<MediaEnginePublicState>;
+  probeAvatarEngine(accountId: string): Promise<{
+    connected: boolean;
+    configured: boolean;
+    health: AvatarHealth;
+    probe?: {
+      serverReachable: boolean;
+      avatarExists: boolean;
+      sessionStarted: boolean;
+      audioAccepted: boolean;
+      outputAvailable: boolean;
+      message: string;
+    };
+  }>;
+
+  listAvatars(): Promise<AvatarAsset[]>;
+  getAvatar(id: string): Promise<AvatarAsset | null>;
+  createAvatar(input: {
+    name: string;
+    engine: AvatarAssetEngine;
+    sourcePath: string;
+    previewImagePath?: string;
+  }): Promise<AvatarAsset>;
+  renameAvatar(id: string, name: string): Promise<AvatarAsset>;
+  duplicateAvatar(id: string): Promise<AvatarAsset>;
+  deleteAvatar(id: string): Promise<void>;
+  preprocessAvatar(id: string): Promise<AvatarPreprocessJob>;
+  getAvatarPreprocessJob(jobId: string): Promise<AvatarPreprocessJob | null>;
+  pickAvatarVideo(): Promise<string | null>;
+  selectAvatarForAccount(accountId: string, avatarId: string | null): Promise<MediaProfile>;
+  testAvatarSpeak(accountId: string, text?: string): Promise<void>;
+
+  listScenes(): Promise<Array<{ id: SceneLayoutId; name: string }>>;
+  getSceneState(accountId: string): Promise<SceneEnginePublicState>;
+  setSceneManual(accountId: string, sceneId: string): Promise<SceneEnginePublicState>;
+  clearSceneOverride(accountId: string): Promise<SceneEnginePublicState>;
+  setSceneResolution(
+    accountId: string,
+    preset: "720x1280" | "1080x1920"
+  ): Promise<SceneEnginePublicState>;
+  getScenePreviewFrame(
+    accountId: string,
+    priority?: "focused" | "card" | "hidden"
+  ): Promise<SceneFrame | null>;
+
+  getMediaReadiness(accountId: string): Promise<MediaReadinessReport>;
+  runMediaDryRun(accountId: string): Promise<MediaDryRunResult>;
+  runMediaMultiDryRun(accountIds?: string[]): Promise<MediaMultiDryRunResult>;
 
   enterTakeover(accountId: string): Promise<OperatorControlPublicSnapshot>;
   exitTakeover(accountId: string): Promise<OperatorControlPublicSnapshot>;

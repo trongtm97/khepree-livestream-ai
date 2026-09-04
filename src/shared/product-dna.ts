@@ -78,6 +78,8 @@ export function normalizeProduct(raw: Partial<ProductDNA> & { id: string; title:
     description: trimOrUndefined(raw.description),
     priceText: trimOrUndefined(raw.priceText),
     currency: trimOrUndefined(raw.currency),
+    imagePaths: normalizeStringList(raw.imagePaths),
+    videoPaths: normalizeStringList(raw.videoPaths),
     facts: normalizeStringList(raw.facts),
     benefits: normalizeStringList(raw.benefits),
     materials: trimOrUndefined(raw.materials),

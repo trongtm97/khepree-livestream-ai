@@ -53,6 +53,8 @@ export const ERROR_CODES = {
   // Media / TTS / camera
   MEDIA_NOT_READY: "MEDIA_NOT_READY",
   TTS_UNAVAILABLE: "TTS_UNAVAILABLE",
+  AUDIO_DEVICE_COLLISION: "AUDIO_DEVICE_COLLISION",
+  AUDIO_ROUTING_NOT_READY: "AUDIO_ROUTING_NOT_READY",
   VIRTUAL_CAMERA_UNAVAILABLE: "VIRTUAL_CAMERA_UNAVAILABLE",
 
   // Python worker
@@ -96,6 +98,9 @@ export const ERROR_CODES = {
   HARDWARE_TOO_MANY_BROWSER_CONTEXTS: "HARDWARE_TOO_MANY_BROWSER_CONTEXTS",
   HARDWARE_AI_QUEUE_BACKLOG: "HARDWARE_AI_QUEUE_BACKLOG",
   HARDWARE_CAPACITY: "HARDWARE_CAPACITY",
+
+  /** GpuMediaScheduler denied AVATAR_LIVE — suggest Voice Only. */
+  AVATAR_LIVE_GPU_DENIED: "AVATAR_LIVE_GPU_DENIED",
 
   UNKNOWN: "UNKNOWN"
 } as const;
@@ -303,6 +308,16 @@ export const ERROR_META: Record<string, ErrorCatalogMeta> = {
     group: "media",
     severity: "warning"
   },
+  [ERROR_CODES.AUDIO_DEVICE_COLLISION]: {
+    code: ERROR_CODES.AUDIO_DEVICE_COLLISION,
+    group: "media",
+    severity: "warning"
+  },
+  [ERROR_CODES.AUDIO_ROUTING_NOT_READY]: {
+    code: ERROR_CODES.AUDIO_ROUTING_NOT_READY,
+    group: "media",
+    severity: "warning"
+  },
   [ERROR_CODES.VIRTUAL_CAMERA_UNAVAILABLE]: {
     code: ERROR_CODES.VIRTUAL_CAMERA_UNAVAILABLE,
     group: "media",
@@ -435,6 +450,11 @@ export const ERROR_META: Record<string, ErrorCatalogMeta> = {
   },
   [ERROR_CODES.HARDWARE_CAPACITY]: {
     code: ERROR_CODES.HARDWARE_CAPACITY,
+    group: "system",
+    severity: "warning"
+  },
+  [ERROR_CODES.AVATAR_LIVE_GPU_DENIED]: {
+    code: ERROR_CODES.AVATAR_LIVE_GPU_DENIED,
     group: "system",
     severity: "warning"
   },

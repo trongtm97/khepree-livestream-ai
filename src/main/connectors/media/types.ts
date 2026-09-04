@@ -9,8 +9,9 @@ export type SpeakOptions = {
 };
 
 /**
- * Per-account media session (voice now; avatar later).
+ * Per-account media session (voice and/or composite avatar).
  * One session must not speak two lines at once — implementations queue.
+ * LiveOrchestrator only uses speak / setScene / stopSpeech / health — never AvatarProvider.
  */
 export interface MediaSession {
   readonly accountId: string;

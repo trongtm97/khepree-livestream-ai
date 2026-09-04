@@ -1,24 +1,28 @@
-# Review next — top 10 after Prompt 01–09
+# Review next — top 10 after Prompt 01–12 (milestone 0.4.x)
 
-Based on **current code**, not wishful docs. Milestone **0.3.x** is not production-ready.
+Based on **current code**, not wishful docs. Milestone **0.4.x** = media routing + avatar **foundation**. **Not production-ready.** package.json stays `0.1.0` until real smoke PASSes.
+
+Media gates: `docs/MEDIA_REAL_SMOKE_TEST.md` (A–F). Core TikTok/Gemini checklist: `docs/REAL_SMOKE_TEST.md`.
 
 | # | Priority | Work | Why |
 | --- | --- | --- | --- |
-| 1 | **P0** | Run REAL SMOKE for 3 accounts and fill local PASS/FAIL (`docs/REAL_SMOKE_TEST.md`) | Automated suite cannot prove TikTok/Gemini/LIVE Manager |
-| 2 | **P0** | Khepree production: pin lease signing key + seed `multi_live_enabled` / max accounts / max lives on platform | Fail-closed client is ready; platform entitlements still soft |
-| 3 | **P0** | TikTokLive reconnect + concurrent A/B/C comment proof with markers | Worker registry exists; real disconnect/backoff unproven |
-| 4 | **P0** | LIVE Manager selector pack v1 validated on real UI + breakage diagnostics | Foundation pack incomplete; risk of guessing selectors |
-| 5 | **P0** | Gemini real login → model list → ActionProposal → reconnect/fallback under quota | Path wired; default still often mock until operator connects |
-| 6 | **P1** | Virtual audio sink (keep LocalPreview; add stream-oriented output) | TTS speaks locally; livestream ingest needs non-speaker path |
-| 7 | **P1** | Operator log viewer tab (replace Coming Soon logs) | AGENTS.md long-running diagnostics; files may exist without UI |
-| 8 | **P1** | Dev-only IPC inject comment (`A_TEST_001` style) for smoke without live chatters | Speeds REAL SMOKE; keep gated/non-packaged |
-| 9 | **P1** | Market policy packs as data files + load path | Guard exists; packs not first-class operator config |
-| 10 | **P2** | Avatar / MuseTalk + virtual camera (after voice+virtual audio stable) | Explicitly out of V1 voice scope; GPU tiers already hinted only |
+| 1 | **P0** | Run GATE A — 3-account TikTok/Gemini REAL SMOKE; record local PASS/FAIL | Automated suite cannot prove live connectors |
+| 2 | **P0** | Run GATE B — 3-account audio endpoint isolation (no bleed) | Routing code exists; real Windows isolation unproven |
+| 3 | **P0** | Khepree production: pin lease signing key + seed multi-live capacity features | Fail-closed client ready; platform entitlements soft |
+| 4 | **P0** | LIVE Manager selector pack v1 on real UI + breakage diagnostics | Foundation pack incomplete |
+| 5 | **P1** | UnityCapture bridge spike → GATE C (2-cam RED/BLUE isolation) | Feasibility written; WindowsVirtualCameraOutput still stub |
+| 6 | **P1** | Avatar FPS bench → GATE D; keep GpuMediaScheduler Voice Only degrade | MuseTalk worker mock-first; realtime not proven |
+| 7 | **P1** | GATE E — takeover stops only target account’s TTS/avatar | Operator control tested in Vitest; media path needs real proof |
+| 8 | **P1** | GATE F — crash recovery with audio bridge / avatar worker processes | Session recovery exists; media orphan cleanup unproven |
+| 9 | **P1** | Operator log viewer tab (replace Coming Soon) | Long-running diagnostics for operators |
+| 10 | **P2** | Signed multi virtual-cam installer + “Camera Khepree N” naming | After GATE C PASS only |
 
 ## Explicitly not next
 
-- Rewriting MultiLiveRuntimeManager / scheduler / approval session binding from scratch.
-- Claiming production-ready without REAL SMOKE PASS.
+- Rewriting MultiLiveRuntimeManager / AiRequestScheduler / approval session binding from scratch.
+- Claiming multi virtual camera or avatar livestream “works” without GATE C/D PASS.
+- Bumping package.json to a production release version without GATE A–F.
+- Shipping GPL OBS plugins inside proprietary core (keep external optional).
 - Shipping edge-tts as default commercial TTS without legal clearance.
 
 ## Verify before starting next build

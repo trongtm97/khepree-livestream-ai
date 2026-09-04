@@ -637,6 +637,11 @@ for (const needle of [
   "CURRENT_SCHEMA_VERSION",
   "migrateV2MultiLive",
   "migrateV3LiveSessionStatus",
+  "migrateV4MediaProfiles",
+  "migrateV5AudioOutput",
+  "migrateV6LiveOutputMode",
+  "migrateV7AvatarEngine",
+  "migrateV8AvatarAssets",
   "tiktok_accounts",
   "account_live_settings",
   "schema.version"
@@ -646,8 +651,8 @@ for (const needle of [
     failed = true;
   }
 }
-if (!connectionSrc.includes("CURRENT_SCHEMA_VERSION = 4")) {
-  console.error("schema version must be 3 for crash recovery status column");
+if (!connectionSrc.includes("CURRENT_SCHEMA_VERSION = 8")) {
+  console.error("schema version must be 8 for avatar library");
   failed = true;
 }
 

@@ -1,4 +1,7 @@
-import { app, ipcMain } from "electron";
+import { app, dialog, ipcMain } from "electron";
+import type { AvatarAssetEngine } from "../../shared/avatar-assets";
+import { DEFAULT_SCENES } from "../../shared/scene-types";
+import type { PreviewPriority } from "../live/scene/scene-engine";
 import { IPC, type AppSnapshot, type MultiLiveSnapshot } from "../../shared/ipc";
 import type {
   LiveStartReadyBatchResult,
@@ -10,7 +13,35 @@ import type { OnboardingState } from "../../shared/onboarding";
 import type { AccountLiveSnapshot, AutomationMode, ProductDNA } from "../../shared/live-types";
 import { DEFAULT_ACCOUNT_AUTOMATION_MODE } from "../../shared/tiktok-account";
 import { normalizeProduct, validateProduct } from "../../shared/product-dna";
+import {
+  findAudioDeviceCollision,
+  isVoiceStreamAudioReady,
+  isVoiceStreamMode
+} from "../../shared/audio-routing";
+import {
+  checkOutputModeLicense,
+  normalizeLiveOutputMode,
+  resolveMediaCapabilities
+} from "../../shared/live-output-mode";
+import {
+  isAvatarEngineConfigured,
+  isLiveTalkingEngineConfigured,
+  isMuseTalkEngineConfigured,
+  type AvatarEngineSettings
+} from "../../shared/media-contracts";
+import { ExternalLiveTalkingProvider } from "../connectors/media/avatar/external-livetalking-provider";
+import { MuseTalkLocalProvider } from "../connectors/media/avatar/musetalk-local-provider";
 import { AppContainer } from "../app-container";
+import { resolveAppRoot } from "../app-paths";
+import {
+  listAudioDevicesOnce,
+  resolveAudioBridgeExe
+} from "../connectors/media/audio/windows-audio-bridge";
+import {
+  getMediaReadinessReport,
+  runMediaDryRun,
+  runMediaMultiDryRun
+} from "../live/media-readiness-service";
 import { requireValidAccountId } from "./account-id";
 
 function legacyFocusedPane(container: AppContainer) {
@@ -44,8 +75,30 @@ function enrichLiveSnapshot(
 ): AccountLiveSnapshot {
   const tiktok = container.tiktok.getState(snap.accountId);
   const liveManager = container.liveManager.getState(snap.accountId);
+  const profile = container.mediaProfiles.getByAccount(snap.accountId);
+  const settings = container.accountLiveSettings.ensure(snap.accountId);
+  const outputType = profile?.audioOutputType ?? "local-preview";
+  const deviceId = profile?.audioOutputDeviceId;
+  const voiceStream = isVoiceStreamMode(profile);
+  const mediaCapabilities = resolveMediaCapabilities({
+    ttsStatus: "UNKNOWN",
+    audioOutputType: outputType,
+    audioOutputDeviceId: deviceId,
+    avatarReady: isAvatarEngineConfigured(profile?.avatarEngine),
+    videoRouteReady:
+      isLiveTalkingEngineConfigured(profile?.avatarEngine) &&
+      profile?.avatarEngine.transport === "virtualcam"
+  });
   return {
     ...snap,
+    outputMode: settings.outputMode,
+    mediaCapabilities,
+    audioRouting: {
+      mode: voiceStream ? "voice-stream" : "assistant-only",
+      outputType,
+      deviceId,
+      ready: isVoiceStreamAudioReady(profile)
+    },
     ...(tiktok ? { tiktok } : {}),
     ...(liveManager ? { liveManager } : {})
   };
@@ -174,6 +227,21 @@ export function registerIpc(container: AppContainer): void {
       if (mode === "FULL_AUTO") container.khepree.assertProductAccess("full_auto");
       const id = accountId(container, rawAccountId);
       container.multiLive.setAutomationMode(id, mode);
+    }
+  );
+
+  ipcMain.handle(
+    IPC.LIVE_SET_OUTPUT_MODE,
+    async (_event, rawAccountId: unknown, rawMode: unknown) => {
+      container.khepree.assertProductAccess();
+      const id = accountId(container, rawAccountId);
+      const mode = normalizeLiveOutputMode(typeof rawMode === "string" ? rawMode : undefined);
+      const license = checkOutputModeLicense(mode, container.khepree.publicState.features ?? {});
+      if (!license.allowed) {
+        throw new Error(license.reason ?? "OUTPUT_MODE_LICENSE_DENIED");
+      }
+      container.accountLiveSettings.upsert({ accountId: id, outputMode: mode });
+      return container.accountLiveSettings.ensure(id);
     }
   );
 
@@ -506,6 +574,16 @@ export function registerIpc(container: AppContainer): void {
     return container.mediaFactory.getTts().listVoices();
   });
 
+  ipcMain.handle(IPC.MEDIA_LIST_AUDIO_DEVICES, async () => {
+    const exe = resolveAudioBridgeExe(resolveAppRoot());
+    if (!exe) return [];
+    try {
+      return await listAudioDevicesOnce(exe);
+    } catch {
+      return [];
+    }
+  });
+
   ipcMain.handle(IPC.MEDIA_GET_PROFILE, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
     const profile = container.mediaProfiles.ensureForAccount(id);
@@ -521,18 +599,294 @@ export function registerIpc(container: AppContainer): void {
     async (
       _event,
       rawAccountId: unknown,
-      patch: { voiceId?: string | null; rate?: number } | undefined
+      patch:
+        | {
+            voiceId?: string | null;
+            rate?: number;
+            audioOutputType?: "local-preview" | "windows-endpoint";
+            audioOutputDeviceId?: string | null;
+            /** Advanced Mode only — allow two shops to share one endpoint. */
+            allowDeviceCollision?: boolean;
+            avatarEngine?: AvatarEngineSettings;
+          }
+        | undefined
     ) => {
       const id = accountId(container, rawAccountId);
+      const nextType =
+        patch?.audioOutputType ??
+        container.mediaProfiles.ensureForAccount(id).audioOutputType;
+      const nextDevice =
+        patch?.audioOutputDeviceId === null
+          ? undefined
+          : patch?.audioOutputDeviceId !== undefined
+            ? patch.audioOutputDeviceId || undefined
+            : container.mediaProfiles.ensureForAccount(id).audioOutputDeviceId;
+
+      if (nextType === "windows-endpoint" && nextDevice && !patch?.allowDeviceCollision) {
+        const collision = findAudioDeviceCollision(
+          id,
+          nextDevice,
+          container.mediaProfiles.list()
+        );
+        if (collision) {
+          throw new Error(`AUDIO_DEVICE_COLLISION:${collision.otherAccountId}`);
+        }
+      }
+
       const next = container.mediaProfiles.upsert({
         accountId: id,
         voiceId: patch?.voiceId === null ? undefined : patch?.voiceId,
-        rate: patch?.rate
+        rate: patch?.rate,
+        audioOutputType: patch?.audioOutputType,
+        audioOutputDeviceId:
+          patch?.audioOutputDeviceId === null
+            ? undefined
+            : patch?.audioOutputDeviceId,
+        avatarEngine: patch?.avatarEngine
       });
       container.accountLiveSettings.upsert({ accountId: id, mediaProfileId: next.id });
       return next;
     }
   );
+
+  ipcMain.handle(
+    IPC.MEDIA_PROBE_AVATAR_ENGINE,
+    async (_event, rawAccountId: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const profile = container.mediaProfiles.ensureForAccount(id);
+      const configured = isAvatarEngineConfigured(profile.avatarEngine);
+      if (!configured) {
+        return {
+          connected: false,
+          configured: false,
+          health: {
+            status: "DOWN" as const,
+            message: "not configured",
+            checkedAt: new Date().toISOString()
+          }
+        };
+      }
+      if (isMuseTalkEngineConfigured(profile.avatarEngine)) {
+        const provider = new MuseTalkLocalProvider({
+          settings: profile.avatarEngine
+        });
+        try {
+          const health = await provider.health();
+          const metrics = provider.getLastMetrics();
+          // DEGRADED (sub-realtime) ⇒ not connected for avatar live readiness.
+          const connected = health.status === "READY";
+          return {
+            connected,
+            configured: true,
+            health,
+            probe: metrics
+              ? {
+                  serverReachable: health.status !== "DOWN",
+                  avatarExists: true,
+                  sessionStarted: false,
+                  audioAccepted: false,
+                  outputAvailable: connected,
+                  message: health.message ?? "",
+                  ...metrics
+                }
+              : undefined
+          };
+        } finally {
+          await provider.dispose();
+        }
+      }
+      const provider = new ExternalLiveTalkingProvider({
+        settings: profile.avatarEngine
+      });
+      try {
+        const health = await provider.health();
+        const probe = provider.getLastProbe();
+        return {
+          connected: Boolean(probe?.serverReachable && probe.avatarExists),
+          configured: true,
+          health,
+          probe
+        };
+      } finally {
+        await provider.dispose();
+      }
+    }
+  );
+
+  ipcMain.handle(IPC.AVATAR_LIST, async () => container.avatarLibrary.list());
+
+  ipcMain.handle(IPC.AVATAR_GET, async (_event, rawId: unknown) => {
+    if (typeof rawId !== "string" || !rawId.trim()) return null;
+    return container.avatarLibrary.get(rawId.trim()) ?? null;
+  });
+
+  ipcMain.handle(
+    IPC.AVATAR_CREATE,
+    async (
+      _event,
+      input:
+        | {
+            name?: string;
+            engine?: AvatarAssetEngine;
+            sourcePath?: string;
+            previewImagePath?: string;
+          }
+        | undefined
+    ) => {
+      if (!input?.sourcePath || typeof input.sourcePath !== "string") {
+        throw new Error("AVATAR_SOURCE_REQUIRED");
+      }
+      const engine: AvatarAssetEngine =
+        input.engine === "musetalk-local" || input.engine === "livetalking"
+          ? input.engine
+          : "auto";
+      return container.avatarLibrary.create({
+        name: typeof input.name === "string" ? input.name : "Avatar",
+        engine,
+        sourcePath: input.sourcePath,
+        previewImagePath:
+          typeof input.previewImagePath === "string" ? input.previewImagePath : undefined
+      });
+    }
+  );
+
+  ipcMain.handle(IPC.AVATAR_RENAME, async (_event, rawId: unknown, rawName: unknown) => {
+    if (typeof rawId !== "string" || typeof rawName !== "string") {
+      throw new Error("AVATAR_RENAME_INVALID");
+    }
+    return container.avatarLibrary.rename(rawId, rawName);
+  });
+
+  ipcMain.handle(IPC.AVATAR_DUPLICATE, async (_event, rawId: unknown) => {
+    if (typeof rawId !== "string") throw new Error("AVATAR_ID_REQUIRED");
+    return container.avatarLibrary.duplicate(rawId);
+  });
+
+  ipcMain.handle(IPC.AVATAR_DELETE, async (_event, rawId: unknown) => {
+    if (typeof rawId !== "string") throw new Error("AVATAR_ID_REQUIRED");
+    container.avatarLibrary.delete(rawId);
+  });
+
+  ipcMain.handle(IPC.AVATAR_PREPROCESS, async (_event, rawId: unknown) => {
+    if (typeof rawId !== "string") throw new Error("AVATAR_ID_REQUIRED");
+    return container.avatarLibrary.startPreprocess(rawId);
+  });
+
+  ipcMain.handle(IPC.AVATAR_PREPROCESS_JOB, async (_event, rawJobId: unknown) => {
+    if (typeof rawJobId !== "string") return null;
+    return container.avatarLibrary.getJob(rawJobId) ?? null;
+  });
+
+  ipcMain.handle(IPC.AVATAR_PICK_VIDEO, async () => {
+    const result = await dialog.showOpenDialog({
+      title: "Chọn video nhân vật",
+      properties: ["openFile"],
+      filters: [
+        { name: "Video", extensions: ["mp4", "mov", "webm", "mkv"] },
+        { name: "All", extensions: ["*"] }
+      ]
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle(
+    IPC.AVATAR_SELECT_FOR_ACCOUNT,
+    async (_event, rawAccountId: unknown, rawAvatarId: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const avatarId =
+        rawAvatarId === null || rawAvatarId === undefined
+          ? undefined
+          : typeof rawAvatarId === "string"
+            ? rawAvatarId
+            : undefined;
+      if (avatarId) {
+        const asset = container.avatarLibrary.get(avatarId);
+        if (!asset) throw new Error("AVATAR_NOT_FOUND");
+      }
+      return container.mediaProfiles.upsert({
+        accountId: id,
+        selectedAvatarId: avatarId ?? ""
+      });
+    }
+  );
+
+  ipcMain.handle(
+    IPC.AVATAR_TEST_SPEAK,
+    async (_event, rawAccountId: unknown, text: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const sample =
+        typeof text === "string" && text.trim()
+          ? text.trim()
+          : "Xin chào, tôi là nhân vật AI của gian hàng.";
+      await container.mediaFactory.preview(id, sample);
+    }
+  );
+
+  ipcMain.handle(IPC.SCENE_LIST, async () =>
+    DEFAULT_SCENES.map((s) => ({ id: s.id, name: s.name }))
+  );
+
+  ipcMain.handle(IPC.SCENE_GET_STATE, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    return container.multiLive.ensureRuntime(id).getSceneState();
+  });
+
+  ipcMain.handle(
+    IPC.SCENE_SET_MANUAL,
+    async (_event, rawAccountId: unknown, rawScene: unknown) => {
+      const id = accountId(container, rawAccountId);
+      if (typeof rawScene !== "string") throw new Error("SCENE_ID_REQUIRED");
+      return container.multiLive.ensureRuntime(id).setSceneManual(rawScene);
+    }
+  );
+
+  ipcMain.handle(IPC.SCENE_CLEAR_OVERRIDE, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    return container.multiLive.ensureRuntime(id).clearSceneOverride();
+  });
+
+  ipcMain.handle(
+    IPC.SCENE_SET_RESOLUTION,
+    async (_event, rawAccountId: unknown, rawPreset: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const preset = rawPreset === "1080x1920" ? "1080x1920" : "720x1280";
+      return container.multiLive.ensureRuntime(id).setSceneResolution(preset);
+    }
+  );
+
+  ipcMain.handle(
+    IPC.SCENE_PREVIEW_FRAME,
+    async (_event, rawAccountId: unknown, rawPriority: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const priority: PreviewPriority =
+        rawPriority === "card" || rawPriority === "hidden" || rawPriority === "focused"
+          ? rawPriority
+          : "focused";
+      return container.multiLive.ensureRuntime(id).getScenePreview(priority);
+    }
+  );
+
+  ipcMain.handle(IPC.MEDIA_READINESS_GET, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    return getMediaReadinessReport(container, id);
+  });
+
+  ipcMain.handle(IPC.MEDIA_DRY_RUN, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    return runMediaDryRun(container, id, 0);
+  });
+
+  ipcMain.handle(IPC.MEDIA_MULTI_DRY_RUN, async (_event, rawIds: unknown) => {
+    let ids: string[] = [];
+    if (Array.isArray(rawIds)) {
+      ids = rawIds.filter((x): x is string => typeof x === "string" && Boolean(x.trim()));
+    }
+    if (ids.length === 0) {
+      ids = container.multiLive.listAccounts().slice(0, 3).map((a) => a.id);
+    }
+    return runMediaMultiDryRun(container, ids);
+  });
 
   ipcMain.handle(
     IPC.MEDIA_PREVIEW,

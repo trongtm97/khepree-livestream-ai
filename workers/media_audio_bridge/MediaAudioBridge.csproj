@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>media_audio_bridge</AssemblyName>
+    <RootNamespace>MediaAudioBridge</RootNamespace>
+    <!-- Windows render endpoints only; no business logic. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- NAudio is MIT — https://github.com/naudio/NAudio -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+</Project>

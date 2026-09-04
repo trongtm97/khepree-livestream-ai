@@ -1,11 +1,29 @@
+/**
+ * Per-account blockers for start — plain operator reasons.
+ */
 import type { AccountLiveSnapshot } from "../../shared/live-types";
+import {
+  isOutputModeReady,
+  normalizeLiveOutputMode
+} from "../../shared/live-output-mode";
 
-/** Per-account blockers for "start ready accounts" — plain operator reasons. */
-export type AccountStartBlock = "no_product" | "tiktok_disconnected";
+export type AccountStartBlock =
+  | "no_product"
+  | "tiktok_disconnected"
+  | "audio_routing"
+  | "output_mode";
 
 export function accountStartBlock(live: AccountLiveSnapshot): AccountStartBlock | null {
   if (!live.currentProductId) return "no_product";
   if (!live.tiktok?.connected) return "tiktok_disconnected";
+  const mode = normalizeLiveOutputMode(live.outputMode);
+  if (live.mediaCapabilities && !isOutputModeReady(mode, live.mediaCapabilities)) {
+    return "output_mode";
+  }
+  // Legacy audio-routing field (pre-capability) — still honor if present.
+  if (live.audioRouting?.mode === "voice-stream" && !live.audioRouting.ready) {
+    if (mode === "VOICE_ONLY" || mode === "AVATAR_LIVE") return "audio_routing";
+  }
   return null;
 }
 

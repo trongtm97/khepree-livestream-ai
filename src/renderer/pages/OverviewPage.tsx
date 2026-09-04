@@ -48,6 +48,8 @@ export function OverviewPage({ snapshot }: { snapshot: AppSnapshot }) {
       const already = countSkipped(result, LIVE_BATCH_REASONS.ALREADY_RUNNING);
       const noProduct = countSkipped(result, LIVE_BATCH_REASONS.NO_PRODUCT);
       const noTiktok = countSkipped(result, LIVE_BATCH_REASONS.TIKTOK_DISCONNECTED);
+      const noAudio = countSkipped(result, LIVE_BATCH_REASONS.AUDIO_ROUTING_NOT_READY);
+      const noMode = countSkipped(result, LIVE_BATCH_REASONS.OUTPUT_MODE_NOT_READY);
       const limit = countSkipped(result, LIVE_BATCH_REASONS.CAPACITY_LIMIT);
       if (already > 0) {
         parts.push(t("liveCenter.runAll.result.alreadyRunning", { count: already }));
@@ -57,6 +59,12 @@ export function OverviewPage({ snapshot }: { snapshot: AppSnapshot }) {
       }
       if (noTiktok > 0) {
         parts.push(t("liveCenter.runAll.result.noTiktok", { count: noTiktok }));
+      }
+      if (noAudio > 0) {
+        parts.push(t("liveCenter.runAll.result.audioRouting", { count: noAudio }));
+      }
+      if (noMode > 0) {
+        parts.push(t("liveCenter.runAll.result.outputMode", { count: noMode }));
       }
       if (limit > 0) {
         parts.push(t("liveCenter.runAll.result.limit", { count: limit }));

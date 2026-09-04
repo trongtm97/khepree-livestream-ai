@@ -84,7 +84,7 @@ export function AccountLiveCard({
         </div>
         <div>
           <dt>{t("liveCenter.card.media")}</dt>
-          <dd>{t("liveCenter.card.mediaUnset")}</dd>
+          <dd>{t(`voice.outputMode.${live.outputMode ?? "ASSIST_ONLY"}`)}</dd>
         </div>
       </dl>
 

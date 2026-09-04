@@ -23,5 +23,9 @@ This repository is intentionally designed for iterative development by AI coding
 - `src/main/live/`
 - `workers/gemini_worker/`
 - `workers/tiktok_worker/`
+- `workers/media_audio_bridge/` (Windows endpoint playback helper; external virtual cables)
+
+Video virtual-camera research (no driver chosen yet): `docs/VIRTUAL_CAMERA_FEASIBILITY.md`.
+Avatar GPU capacity: `GpuMediaScheduler` (separate from `AiRequestScheduler` / Gemini).
 
 Before changing architecture, read `docs/ARCHITECTURE.md`.

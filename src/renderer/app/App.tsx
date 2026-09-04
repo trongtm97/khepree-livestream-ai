@@ -17,7 +17,7 @@ import { OnboardingWizard } from "../pages/OnboardingWizard";
 import { OverviewPage } from "../pages/OverviewPage";
 import { ProductsPage } from "../pages/ProductsPage";
 import { SettingsPage } from "../pages/SettingsPage";
-import { VoicePage } from "../pages/VoicePage";
+import { AvatarLibraryPage } from "../pages/AvatarLibraryPage";
 import { AppShellProvider } from "./AppShellContext";
 import { createSnapshotSyncController } from "./snapshot-sync";
 import type { AppShellValue, AppTab } from "./types";
@@ -239,7 +239,7 @@ export function App() {
             {tab === "comments" && <CommentsPage snapshot={snapshot} />}
             {tab === "products" && <ProductsPage snapshot={snapshot} />}
             {tab === "script" && <ComingSoonPage feature="script" />}
-            {tab === "avatar" && snapshot && <VoicePage snapshot={snapshot} />}
+            {tab === "avatar" && snapshot && <AvatarLibraryPage snapshot={snapshot} />}
             {tab === "connections" && <ConnectionsPage snapshot={snapshot} />}
             {tab === "logs" && <ComingSoonPage feature="logs" />}
             {tab === "settings" && <SettingsPage snapshot={snapshot} />}

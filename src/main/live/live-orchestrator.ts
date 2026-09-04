@@ -8,8 +8,10 @@ import type {
 } from "../../shared/live-types";
 import type { LlmContext, LlmProvider } from "../connectors/llm/types";
 import type { MediaProvider } from "../connectors/media/types";
+import type { SceneEngine } from "./scene/scene-engine";
 import { LiveEventBus } from "../core/event-bus";
 import { detectSalesCommentIntent } from "../../shared/sales-brain";
+import { allowsSpeechOutput, type LiveOutputMode } from "../../shared/live-output-mode";
 import { ApprovalEngine, type ApprovalEngineOptions } from "./approval-engine";
 import { scoreComment } from "./comment-priority";
 import { LiveMemory } from "./live-memory";
@@ -23,6 +25,10 @@ export interface LiveOrchestratorDeps {
   getCurrentProduct: () => ProductDNA | undefined;
   /** TikTok account owning this orchestrator — stamped on every approval. */
   accountId: string;
+  /** Livestream output mode — ASSIST_ONLY skips TTS playback. */
+  getOutputMode?: () => LiveOutputMode;
+  /** Scene engine for SET_SCENE (optional — tests may omit). */
+  sceneEngine?: SceneEngine;
   onApprovalChanged?: (item: ApprovalItem) => void;
   /** Persist session row when live starts/stops. */
   onSessionStart?: (sessionId: string, mode: AutomationMode) => void;
@@ -414,7 +420,10 @@ export class LiveOrchestrator {
         case "THANK_USER":
           if (this.aiMuted) return;
           if (item.proposal.speech) {
-            await this.deps.media.speak(item.proposal.speech);
+            const outputMode = this.deps.getOutputMode?.() ?? "VOICE_ONLY";
+            if (allowsSpeechOutput(outputMode)) {
+              await this.deps.media.speak(item.proposal.speech);
+            }
             this.memory.rememberSpeech(item.proposal.speech, {
               nextState: item.proposal.nextState
             });
@@ -431,8 +440,10 @@ export class LiveOrchestrator {
           break;
         case "SET_SCENE":
           if (item.proposal.scene) {
-            await this.deps.media.setScene(item.proposal.scene);
-            this.memory.setLastScene(item.proposal.scene);
+            const scene = this.deps.sceneEngine?.applyAiScene(item.proposal.scene);
+            const sceneId = scene?.sceneId ?? item.proposal.scene;
+            await this.deps.media.setScene(sceneId);
+            this.memory.setLastScene(sceneId);
           }
           break;
         case "ASK_OPERATOR":

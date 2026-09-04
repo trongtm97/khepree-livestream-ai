@@ -18,6 +18,9 @@ import type {
 } from "../db/repositories";
 import { LiveOrchestrator } from "./live-orchestrator";
 import { LiveEventDeduplicator } from "./live-event-deduplicator";
+import { SceneEngine } from "./scene/scene-engine";
+import type { PreviewPriority } from "./scene/scene-engine";
+import type { SceneFrame, SceneEnginePublicState } from "../../shared/scene-types";
 import { DEFAULT_ACCOUNT_AUTOMATION_MODE } from "../../shared/tiktok-account";
 
 export type LiveRuntimeRepositories = {
@@ -54,6 +57,7 @@ export class LiveRuntime {
   private readonly settings: AccountLiveSettingsRepository;
   private readonly media: MediaSession;
   private readonly orchestrator: LiveOrchestrator;
+  readonly sceneEngine: SceneEngine;
   private readonly deduper = new LiveEventDeduplicator();
   private readonly onApprovalChanged?: (item: ApprovalItem) => void;
   private disposed = false;
@@ -82,12 +86,16 @@ export class LiveRuntime {
       checkedAt: new Date().toISOString()
     };
 
+    this.sceneEngine = new SceneEngine({ accountId: this.account.id });
+
     this.orchestrator = new LiveOrchestrator({
       accountId: this.account.id,
       eventBus: this.eventBus,
       llm: deps.llm,
       media: deps.media,
       getCurrentProduct: () => this.resolveCurrentProduct(),
+      getOutputMode: () => this.settings.ensure(this.account.id).outputMode,
+      sceneEngine: this.sceneEngine,
       onApprovalChanged: (item) => this.persistApproval(item),
       onSessionStart: (sessionId, mode) => {
         this.startedAtIso = new Date().toISOString();
@@ -135,6 +143,34 @@ export class LiveRuntime {
 
   getMemorySnapshot() {
     return this.orchestrator.getMemorySnapshot();
+  }
+
+  getSceneState(): SceneEnginePublicState {
+    return this.sceneEngine.getPublicState();
+  }
+
+  setSceneManual(sceneId: string): SceneEnginePublicState {
+    this.assertNotDisposed();
+    this.sceneEngine.setManualScene(sceneId);
+    void this.media.setScene(this.sceneEngine.effectiveSceneId());
+    return this.sceneEngine.getPublicState();
+  }
+
+  clearSceneOverride(): SceneEnginePublicState {
+    this.assertNotDisposed();
+    this.sceneEngine.clearManualOverride();
+    void this.media.setScene(this.sceneEngine.effectiveSceneId());
+    return this.sceneEngine.getPublicState();
+  }
+
+  setSceneResolution(preset: "720x1280" | "1080x1920"): SceneEnginePublicState {
+    this.assertNotDisposed();
+    this.sceneEngine.setResolution(preset);
+    return this.sceneEngine.getPublicState();
+  }
+
+  getScenePreview(priority: PreviewPriority): SceneFrame | null {
+    return this.sceneEngine.getPreviewFrame(this.resolveCurrentProduct(), priority);
   }
 
   health(): RuntimeHealth {

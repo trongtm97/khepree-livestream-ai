@@ -41,7 +41,8 @@
     "test:legacy:sales-brain": "tsx src/shared/sales-brain/self-check.ts",
     "doctor": "node scripts/dev-doctor.mjs",
     "worker:gemini": "python workers/gemini_worker/app.py",
-    "worker:tiktok": "python workers/tiktok_worker/app.py"
+    "worker:tiktok": "python workers/tiktok_worker/app.py",
+    "worker:audio-bridge:build": "powershell -NoProfile -ExecutionPolicy Bypass -File workers/media_audio_bridge/build.ps1"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

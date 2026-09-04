@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const SCHEMA_VERSION_KEY = "schema.version";
-/** Current schema version — v4 adds media_profiles for per-account TTS. */
-export const CURRENT_SCHEMA_VERSION = 4;
+/** Current schema version — v8 adds avatar_assets library. */
+export const CURRENT_SCHEMA_VERSION = 8;
 
 export function openDatabase(userDataDir: string): Database.Database {
   const dataDir = path.join(userDataDir, "data");
@@ -198,6 +198,44 @@ function migrateV4MediaProfiles(db: Database.Database): void {
 }
 
 /**
+ * Per-account audio output routing (local preview vs Windows endpoint).
+ * Additive — existing profiles keep rows; missing type → local-preview.
+ */
+function migrateV5AudioOutput(db: Database.Database): void {
+  if (!tableHasColumn(db, "media_profiles", "audio_output_type")) {
+    db.exec(
+      `ALTER TABLE media_profiles ADD COLUMN audio_output_type TEXT NOT NULL DEFAULT 'local-preview'`
+    );
+  }
+  if (!tableHasColumn(db, "media_profiles", "audio_output_device_id")) {
+    db.exec(`ALTER TABLE media_profiles ADD COLUMN audio_output_device_id TEXT`);
+  }
+}
+
+/**
+ * Per-account livestream output mode (assist / voice / avatar).
+ * Additive — missing column → ASSIST_ONLY.
+ */
+function migrateV6LiveOutputMode(db: Database.Database): void {
+  if (!tableHasColumn(db, "account_live_settings", "output_mode")) {
+    db.exec(
+      `ALTER TABLE account_live_settings ADD COLUMN output_mode TEXT NOT NULL DEFAULT 'ASSIST_ONLY'`
+    );
+  }
+}
+
+/**
+ * Optional external avatar engine settings (LiveTalking JSON). Default {}.
+ */
+function migrateV7AvatarEngine(db: Database.Database): void {
+  if (!tableHasColumn(db, "media_profiles", "avatar_engine_json")) {
+    db.exec(
+      `ALTER TABLE media_profiles ADD COLUMN avatar_engine_json TEXT NOT NULL DEFAULT '{}'`
+    );
+  }
+}
+
+/**
  * Versioned, additive migrations.
  * Legacy DBs without schema.version start at 0; v1 CREATE IF NOT EXISTS preserves rows.
  */
@@ -227,5 +265,57 @@ export function migrate(db: Database.Database): void {
   if (version < 4) {
     migrateV4MediaProfiles(db);
     setSchemaVersion(db, 4);
+    version = 4;
+  }
+
+  if (version < 5) {
+    migrateV5AudioOutput(db);
+    setSchemaVersion(db, 5);
+    version = 5;
+  }
+
+  if (version < 6) {
+    migrateV6LiveOutputMode(db);
+    setSchemaVersion(db, 6);
+    version = 6;
+  }
+
+  if (version < 7) {
+    migrateV7AvatarEngine(db);
+    setSchemaVersion(db, 7);
+    version = 7;
+  }
+
+  if (version < 8) {
+    migrateV8AvatarAssets(db);
+    setSchemaVersion(db, 8);
+  }
+}
+
+/**
+ * Operator avatar library — source video + preprocess metadata.
+ */
+function migrateV8AvatarAssets(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS avatar_assets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      engine TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      status TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      processed_path TEXT,
+      preview_image_path TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      checksum TEXT NOT NULL,
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_avatar_assets_updated
+      ON avatar_assets(updated_at);
+  `);
+  if (!tableHasColumn(db, "media_profiles", "selected_avatar_id")) {
+    db.exec(`ALTER TABLE media_profiles ADD COLUMN selected_avatar_id TEXT`);
   }
 }

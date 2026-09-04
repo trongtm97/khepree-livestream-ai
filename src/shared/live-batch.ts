@@ -25,7 +25,9 @@ export const LIVE_BATCH_REASONS = {
   TIKTOK_DISCONNECTED: "TIKTOK_DISCONNECTED",
   ACCOUNT_DISABLED: "ACCOUNT_DISABLED",
   ACCOUNT_SETTINGS_DISABLED: "ACCOUNT_SETTINGS_DISABLED",
-  CAPACITY_LIMIT: "CAPACITY_LIMIT"
+  CAPACITY_LIMIT: "CAPACITY_LIMIT",
+  AUDIO_ROUTING_NOT_READY: "AUDIO_ROUTING_NOT_READY",
+  OUTPUT_MODE_NOT_READY: "OUTPUT_MODE_NOT_READY"
 } as const;
 
 export function isCapacityOrLicenseReason(code: string): boolean {
@@ -34,6 +36,7 @@ export function isCapacityOrLicenseReason(code: string): boolean {
     c === LIVE_BATCH_REASONS.CAPACITY_LIMIT ||
     c.startsWith("LICENSE_") ||
     c.startsWith("HARDWARE_") ||
+    c === "AVATAR_LIVE_GPU_DENIED" ||
     c === "KHEPREE_ACCESS_REQUIRED"
   );
 }

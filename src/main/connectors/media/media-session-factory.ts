@@ -1,16 +1,21 @@
 /**
- * Creates per-account VoiceMediaSession. Provider kind is injectable (not hard-coded).
- * Each live session gets its own TTS instance so cancel/stop does not cross accounts.
+ * Creates per-account MediaSession (VoiceMediaSession or CompositeMediaSession).
+ * Provider kind is injectable (not hard-coded).
+ * Each live session gets its own TTS + AudioOutput so cancel/stop does not cross accounts.
  */
 import { randomUUID } from "node:crypto";
 import type { MediaProfile, TtsProviderId } from "../../../shared/media-contracts";
-import { LocalPreviewOutput, MockAudioOutput } from "./audio/local-preview-output";
-import type { AudioOutput } from "./audio/types";
+import { createAudioOutput, type CreateAudioOutputOptions } from "./audio/create-audio-output";
+import type { AudioBridgeClient } from "./audio/windows-audio-bridge";
 import { MockMediaProvider } from "./mock-media-provider";
 import { MockTtsProvider } from "./tts/mock-tts";
 import type { TtsProvider } from "./tts/types";
 import { createDefaultTtsProvider, WindowsSapiTtsProvider } from "./tts/windows-sapi-tts";
+import type { AvatarProvider } from "./avatar/types";
+import { CompositeMediaSession } from "./composite-media-session";
 import type { MediaSession } from "./types";
+import type { VideoOutput } from "./video/types";
+import { NullVideoOutput } from "./video/null-video-output";
 import { VoiceMediaSession } from "./voice-media-session";
 
 export type MediaSessionFactoryOptions = {
@@ -21,6 +26,16 @@ export type MediaSessionFactoryOptions = {
   silentAudio?: boolean;
   /** Force mock media (no TTS) — tests. */
   useMockSession?: boolean;
+  /** App root for resolving media_audio_bridge.exe. */
+  appRoot?: string;
+  /** Inject bridge per device (tests). */
+  bridgeFactory?: (deviceId: string) => AudioBridgeClient;
+  /**
+   * Optional avatar engine per account. When set, create() returns CompositeMediaSession.
+   * MuseTalk / LiveTalking stay behind AvatarProvider — not in Sales Brain.
+   */
+  createAvatar?: (accountId: string) => AvatarProvider | undefined;
+  createVideo?: (accountId: string) => VideoOutput | undefined;
 };
 
 export class MediaSessionFactory {
@@ -28,12 +43,22 @@ export class MediaSessionFactory {
   private readonly catalogTts: TtsProvider;
   private readonly silentAudio: boolean;
   private readonly useMockSession: boolean;
+  private readonly audioOpts: CreateAudioOutputOptions;
+  private readonly createAvatar?: (accountId: string) => AvatarProvider | undefined;
+  private readonly createVideo?: (accountId: string) => VideoOutput | undefined;
 
   constructor(opts: MediaSessionFactoryOptions) {
     this.getProfile = opts.getProfile;
     this.catalogTts = opts.tts ?? createDefaultTtsProvider();
     this.silentAudio = opts.silentAudio ?? false;
     this.useMockSession = opts.useMockSession ?? false;
+    this.createAvatar = opts.createAvatar;
+    this.createVideo = opts.createVideo;
+    this.audioOpts = {
+      silent: this.silentAudio,
+      appRoot: opts.appRoot,
+      bridgeFactory: opts.bridgeFactory
+    };
   }
 
   /** Catalog / health — not bound to a live speak queue. */
@@ -47,20 +72,39 @@ export class MediaSessionFactory {
     return new MockTtsProvider();
   }
 
+  /** Profile-aware sink — local-preview or windows-endpoint. */
+  createAudioOutput(profile: MediaProfile) {
+    return createAudioOutput(profile, this.audioOpts);
+  }
+
   /** New session per live runtime — caller owns dispose. */
   create(accountId: string): MediaSession {
     if (this.useMockSession) return new MockMediaProvider(accountId);
 
-    const audio: AudioOutput = this.silentAudio
-      ? new MockAudioOutput()
-      : new LocalPreviewOutput();
+    const profile = this.getProfile(accountId);
+    const audio = this.createAudioOutput(profile);
+    const avatar = this.createAvatar?.(accountId);
+    const voiceOpts = {
+      getVoiceId: () => this.getProfile(accountId).voiceId,
+      getRate: () => this.getProfile(accountId).rate
+    };
+
+    if (avatar) {
+      return new CompositeMediaSession({
+        accountId,
+        tts: this.newSpeakTts(),
+        audio,
+        avatar,
+        video: this.createVideo?.(accountId) ?? new NullVideoOutput(`video-${accountId.slice(0, 8)}`),
+        ...voiceOpts
+      });
+    }
 
     return new VoiceMediaSession({
       accountId,
       tts: this.newSpeakTts(),
       audio,
-      getVoiceId: () => this.getProfile(accountId).voiceId,
-      getRate: () => this.getProfile(accountId).rate
+      ...voiceOpts
     });
   }
 
@@ -73,9 +117,7 @@ export class MediaSessionFactory {
       return;
     }
     const profile = this.getProfile(accountId);
-    const audio: AudioOutput = this.silentAudio
-      ? new MockAudioOutput()
-      : new LocalPreviewOutput();
+    const audio = this.createAudioOutput(profile);
     const session = new VoiceMediaSession({
       accountId: `${accountId}:preview`,
       tts: this.newSpeakTts(),
@@ -100,6 +142,8 @@ export function defaultMediaProfile(accountId: string): MediaProfile {
     providerId,
     voiceId: undefined,
     rate: 1,
+    audioOutputType: "local-preview",
+    avatarEngine: { kind: "none" },
     updatedAt: new Date().toISOString()
   };
 }

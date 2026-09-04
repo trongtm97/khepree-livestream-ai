@@ -30,6 +30,8 @@ const api: RendererApi = {
   stopAllLives: () => ipcRenderer.invoke(IPC.LIVE_STOP_ALL),
   setAutomationMode: (accountId: string, mode: AutomationMode) =>
     ipcRenderer.invoke(IPC.LIVE_SET_MODE, accountId, mode),
+  setLiveOutputMode: (accountId, mode) =>
+    ipcRenderer.invoke(IPC.LIVE_SET_OUTPUT_MODE, accountId, mode),
 
   resolveApproval: (accountId, approvalId, decision, editedSpeech) =>
     ipcRenderer.invoke(IPC.APPROVAL_RESOLVE, accountId, approvalId, decision, editedSpeech),
@@ -101,6 +103,7 @@ const api: RendererApi = {
   clearGeminiSession: () => ipcRenderer.invoke(IPC.GEMINI_CLEAR_SESSION),
 
   listMediaVoices: () => ipcRenderer.invoke(IPC.MEDIA_LIST_VOICES),
+  listAudioDevices: () => ipcRenderer.invoke(IPC.MEDIA_LIST_AUDIO_DEVICES),
   getMediaProfile: (accountId: string) =>
     ipcRenderer.invoke(IPC.MEDIA_GET_PROFILE, accountId),
   setMediaProfile: (accountId, patch) =>
@@ -108,6 +111,45 @@ const api: RendererApi = {
   previewMediaVoice: (accountId: string, text?: string) =>
     ipcRenderer.invoke(IPC.MEDIA_PREVIEW, accountId, text),
   getMediaEngineStatus: () => ipcRenderer.invoke(IPC.MEDIA_ENGINE_STATUS),
+  probeAvatarEngine: (accountId: string) =>
+    ipcRenderer.invoke(IPC.MEDIA_PROBE_AVATAR_ENGINE, accountId),
+
+  listAvatars: () => ipcRenderer.invoke(IPC.AVATAR_LIST),
+  getAvatar: (id: string) => ipcRenderer.invoke(IPC.AVATAR_GET, id),
+  createAvatar: (input) => ipcRenderer.invoke(IPC.AVATAR_CREATE, input),
+  renameAvatar: (id: string, name: string) =>
+    ipcRenderer.invoke(IPC.AVATAR_RENAME, id, name),
+  duplicateAvatar: (id: string) => ipcRenderer.invoke(IPC.AVATAR_DUPLICATE, id),
+  deleteAvatar: (id: string) => ipcRenderer.invoke(IPC.AVATAR_DELETE, id),
+  preprocessAvatar: (id: string) => ipcRenderer.invoke(IPC.AVATAR_PREPROCESS, id),
+  getAvatarPreprocessJob: (jobId: string) =>
+    ipcRenderer.invoke(IPC.AVATAR_PREPROCESS_JOB, jobId),
+  pickAvatarVideo: () => ipcRenderer.invoke(IPC.AVATAR_PICK_VIDEO),
+  selectAvatarForAccount: (accountId: string, avatarId: string | null) =>
+    ipcRenderer.invoke(IPC.AVATAR_SELECT_FOR_ACCOUNT, accountId, avatarId),
+  testAvatarSpeak: (accountId: string, text?: string) =>
+    ipcRenderer.invoke(IPC.AVATAR_TEST_SPEAK, accountId, text),
+
+  listScenes: () => ipcRenderer.invoke(IPC.SCENE_LIST),
+  getSceneState: (accountId: string) =>
+    ipcRenderer.invoke(IPC.SCENE_GET_STATE, accountId),
+  setSceneManual: (accountId: string, sceneId: string) =>
+    ipcRenderer.invoke(IPC.SCENE_SET_MANUAL, accountId, sceneId),
+  clearSceneOverride: (accountId: string) =>
+    ipcRenderer.invoke(IPC.SCENE_CLEAR_OVERRIDE, accountId),
+  setSceneResolution: (accountId: string, preset: "720x1280" | "1080x1920") =>
+    ipcRenderer.invoke(IPC.SCENE_SET_RESOLUTION, accountId, preset),
+  getScenePreviewFrame: (
+    accountId: string,
+    priority?: "focused" | "card" | "hidden"
+  ) => ipcRenderer.invoke(IPC.SCENE_PREVIEW_FRAME, accountId, priority),
+
+  getMediaReadiness: (accountId: string) =>
+    ipcRenderer.invoke(IPC.MEDIA_READINESS_GET, accountId),
+  runMediaDryRun: (accountId: string) =>
+    ipcRenderer.invoke(IPC.MEDIA_DRY_RUN, accountId),
+  runMediaMultiDryRun: (accountIds?: string[]) =>
+    ipcRenderer.invoke(IPC.MEDIA_MULTI_DRY_RUN, accountIds),
 
   enterTakeover: (accountId: string) =>
     ipcRenderer.invoke(IPC.OPERATOR_TAKEOVER, accountId),

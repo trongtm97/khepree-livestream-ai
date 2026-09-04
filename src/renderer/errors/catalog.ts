@@ -386,6 +386,28 @@ export const ERROR_COPY: Record<string, ErrorCopy> = {
     ),
     recommendedActions: retryCheck
   },
+  [ERROR_CODES.AUDIO_DEVICE_COLLISION]: {
+    title: L("Thiết bị âm thanh đang dùng chung", "Audio device already in use"),
+    userMessage: L(
+      "Thiết bị này đang được shop khác dùng. Chọn thiết bị khác hoặc ghi đè nâng cao nếu bạn cố ý dùng chung.",
+      "Another shop already uses this device. Pick a different one, or use the advanced override if you intentionally share."
+    ),
+    recommendedActions: A(
+      ["Mở Nhân vật & Giọng nói", "Chạy wizard âm thanh", "Xem chi tiết kỹ thuật"],
+      ["Open Character & voice", "Run audio wizard", "View technical details"]
+    )
+  },
+  [ERROR_CODES.AUDIO_ROUTING_NOT_READY]: {
+    title: L("Chưa xong âm thanh livestream", "Livestream audio not ready"),
+    userMessage: L(
+      "Shop đang gửi âm thanh vào TikTok nhưng chưa chọn thiết bị. Chạy thiết lập âm thanh có hướng dẫn.",
+      "This shop is set for TikTok audio but has no device yet. Run the guided audio setup."
+    ),
+    recommendedActions: A(
+      ["Mở Nhân vật & Giọng nói", "Thiết lập âm thanh", "Xem chi tiết kỹ thuật"],
+      ["Open Character & voice", "Set up audio", "View technical details"]
+    )
+  },
   [ERROR_CODES.VIRTUAL_CAMERA_UNAVAILABLE]: {
     title: L("Camera ảo chưa sẵn sàng", "Virtual camera unavailable"),
     userMessage: L(
@@ -640,6 +662,17 @@ export const ERROR_COPY: Record<string, ErrorCopy> = {
       "Your machine does not have enough capacity for another livestream."
     ),
     recommendedActions: retryCheck
+  },
+  [ERROR_CODES.AVATAR_LIVE_GPU_DENIED]: {
+    title: L("GPU không đủ cho nhân vật AI Live", "GPU cannot run another AI character live"),
+    userMessage: L(
+      "Máy không đủ GPU cho thêm nhân vật AI livestream. Hãy chọn Voice Only hoặc dừng một account avatar khác.",
+      "There is not enough GPU capacity for another AI character livestream. Switch to Voice Only or stop another avatar account."
+    ),
+    recommendedActions: A(
+      ["Chuyển sang Voice Only", "Dừng một livestream nhân vật AI đang chạy", "Giảm chất lượng avatar (LIGHT)"],
+      ["Switch to Voice Only", "Stop another AI character livestream", "Lower avatar quality (LIGHT)"]
+    )
   },
   [ERROR_CODES.UNKNOWN]: {
     title: L("Đã xảy ra lỗi", "Something went wrong"),

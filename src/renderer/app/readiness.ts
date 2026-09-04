@@ -1,4 +1,11 @@
 import type { AppSnapshot } from "../../shared/ipc";
+import {
+  isOutputModeReady,
+  missingCapabilitiesForMode,
+  normalizeLiveOutputMode,
+  outputModeRequirements,
+  type MediaCapabilityKey
+} from "../../shared/live-output-mode";
 import type { TranslateFn } from "../i18n";
 import type { AppTab } from "./types";
 
@@ -71,31 +78,48 @@ function isTikTokReady(snapshot: AppSnapshot): boolean {
   return Boolean(tiktok && tiktok.status === "OK" && !tiktok.component.includes("mock"));
 }
 
-function isVoiceReady(snapshot: AppSnapshot): boolean {
-  const media = snapshot.health.find((h) => h.component.startsWith("media:"));
-  return Boolean(
-    media &&
-      media.status === "OK" &&
-      !media.component.includes("mock")
-  );
-}
-
-function isVirtualCameraReady(_snapshot: AppSnapshot): boolean {
-  return false;
-}
-
-function isAvatarReady(_snapshot: AppSnapshot): boolean {
-  return false;
-}
-
-function isMicReady(_snapshot: AppSnapshot): boolean {
-  return false;
-}
-
 function item(
   partial: Omit<ReadinessItem, "tone"> & { severity: ReadinessSeverity }
 ): ReadinessItem {
   return { ...partial, tone: toneOf(partial.severity) };
+}
+
+function capabilityLabel(key: MediaCapabilityKey, t: TranslateFn): string {
+  switch (key) {
+    case "voiceReady":
+      return t("overview.check.cap.voice");
+    case "audioRouteReady":
+      return t("overview.check.cap.audio");
+    case "avatarReady":
+      return t("overview.check.cap.avatar");
+    case "videoRouteReady":
+      return t("overview.check.cap.video");
+  }
+}
+
+function capabilityDetail(key: MediaCapabilityKey, ready: boolean, t: TranslateFn): string {
+  if (ready) {
+    switch (key) {
+      case "voiceReady":
+        return t("overview.check.cap.voice.ok");
+      case "audioRouteReady":
+        return t("overview.check.cap.audio.ok");
+      case "avatarReady":
+        return t("overview.check.cap.avatar.ok");
+      case "videoRouteReady":
+        return t("overview.check.cap.video.ok");
+    }
+  }
+  switch (key) {
+    case "voiceReady":
+      return t("overview.check.cap.voice.no");
+    case "audioRouteReady":
+      return t("overview.check.cap.audio.no");
+    case "avatarReady":
+      return t("overview.check.cap.avatar.no");
+    case "videoRouteReady":
+      return t("overview.check.cap.video.no");
+  }
 }
 
 export function buildReadiness(snapshot: AppSnapshot, t: TranslateFn): OverallReadiness {
@@ -105,10 +129,20 @@ export function buildReadiness(snapshot: AppSnapshot, t: TranslateFn): OverallRe
   const geminiStartOk = isGeminiStartAllowed(snapshot);
   const tiktokOk = isTikTokReady(snapshot);
   const productsOk = productCount > 0;
-  const voiceOk = isVoiceReady(snapshot);
-  const avatarOk = isAvatarReady(snapshot);
-  const cameraOk = isVirtualCameraReady(snapshot);
-  const micOk = isMicReady(snapshot);
+
+  const focused =
+    snapshot.lives.find((l) => l.accountId === snapshot.focusedAccountId) ??
+    snapshot.lives[0];
+  const outputMode = normalizeLiveOutputMode(focused?.outputMode);
+  const caps = focused?.mediaCapabilities ?? {
+    voiceReady: true,
+    audioRouteReady: false,
+    avatarReady: false,
+    videoRouteReady: false
+  };
+  const modeReady = isOutputModeReady(outputMode, caps);
+  const missing = missingCapabilitiesForMode(outputMode, caps);
+  const need = outputModeRequirements(outputMode);
 
   const items: ReadinessItem[] = [
     item({
@@ -158,38 +192,51 @@ export function buildReadiness(snapshot: AppSnapshot, t: TranslateFn): OverallRe
       cta: productsOk ? undefined : { label: t("overview.cta.addProduct"), tab: "products" }
     }),
     item({
-      id: "voice",
-      label: t("overview.check.voice"),
-      detail: voiceOk ? t("overview.check.voice.ok") : t("overview.check.voice.no"),
-      severity: voiceOk ? "READY" : "WARNING",
-      ready: voiceOk,
-      cta: voiceOk ? undefined : { label: t("overview.cta.setup"), tab: "avatar" }
-    }),
-    item({
-      id: "avatar",
-      label: t("overview.check.avatar"),
-      detail: avatarOk ? t("overview.check.avatar.ok") : t("overview.check.avatar.optional"),
-      severity: avatarOk ? "READY" : "OPTIONAL",
-      ready: avatarOk,
-      cta: avatarOk ? undefined : { label: t("overview.cta.setup"), tab: "avatar" }
-    }),
-    item({
-      id: "camera",
-      label: t("overview.check.camera"),
-      detail: cameraOk ? t("overview.check.camera.ok") : t("overview.check.camera.no"),
-      severity: cameraOk ? "READY" : "WARNING",
-      ready: cameraOk,
-      cta: cameraOk ? undefined : { label: t("overview.cta.setup"), tab: "avatar" }
-    }),
-    item({
-      id: "microphone",
-      label: t("overview.check.microphone"),
-      detail: micOk ? t("overview.check.microphone.ok") : t("overview.check.microphone.no"),
-      severity: micOk ? "READY" : "WARNING",
-      ready: micOk,
-      cta: micOk ? undefined : { label: t("overview.cta.setup"), tab: "settings" }
+      id: "output-mode",
+      label: t("overview.check.outputMode"),
+      detail: modeReady
+        ? t("overview.check.outputMode.ok", { mode: t(`voice.outputMode.${outputMode}`) })
+        : t("overview.check.outputMode.no", {
+            mode: t(`voice.outputMode.${outputMode}`),
+            missing: missing.map((k) => capabilityLabel(k, t)).join(", ")
+          }),
+      severity: modeReady ? "READY" : "BLOCKING",
+      ready: modeReady,
+      cta: modeReady ? undefined : { label: t("overview.cta.setup"), tab: "avatar" }
     })
   ];
+
+  const capEntries: Array<{ key: MediaCapabilityKey; needed: boolean; ready: boolean }> = [
+    { key: "voiceReady", needed: need.needVoice, ready: caps.voiceReady },
+    { key: "audioRouteReady", needed: need.needAudioRoute, ready: caps.audioRouteReady },
+    { key: "avatarReady", needed: need.needAvatar, ready: caps.avatarReady },
+    { key: "videoRouteReady", needed: need.needVideoRoute, ready: caps.videoRouteReady }
+  ];
+
+  for (const entry of capEntries) {
+    if (!entry.needed) {
+      items.push(
+        item({
+          id: `cap:${entry.key}`,
+          label: capabilityLabel(entry.key, t),
+          detail: t("overview.check.cap.notRequired"),
+          severity: "OPTIONAL",
+          ready: entry.ready
+        })
+      );
+      continue;
+    }
+    items.push(
+      item({
+        id: `cap:${entry.key}`,
+        label: capabilityLabel(entry.key, t),
+        detail: capabilityDetail(entry.key, entry.ready, t),
+        severity: entry.ready ? "READY" : "BLOCKING",
+        ready: entry.ready,
+        cta: entry.ready ? undefined : { label: t("overview.cta.setup"), tab: "avatar" }
+      })
+    );
+  }
 
   const scored = items.filter((x) => x.severity !== "OPTIONAL");
   const readyCount = scored.filter((x) => x.ready).length;

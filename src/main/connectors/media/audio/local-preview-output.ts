@@ -1,18 +1,34 @@
 /**
  * Play WAV on the local default speaker (operator preview).
- * VirtualAudioOutput (stream/VB-Cable) is intentionally not here.
+ * Livestream routing uses WindowsEndpointOutput — never mix them silently.
  */
 import { execFile } from "node:child_process";
+import type { RuntimeHealth } from "../../../../shared/live-types";
 import type { AudioOutput } from "./types";
 
 function escapePs(s: string): string {
   return s.replace(/'/g, "''");
 }
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
 export class LocalPreviewOutput implements AudioOutput {
   readonly id = "local-preview";
+  readonly displayName = "Local speakers";
+  readonly kind = "local-preview" as const;
   private playProc: ReturnType<typeof execFile> | undefined;
   private stopped = false;
+
+  async health(): Promise<RuntimeHealth> {
+    return {
+      component: "audio:local-preview",
+      status: "OK",
+      message: "Default speakers (preview)",
+      checkedAt: nowIso()
+    };
+  }
 
   async play(filePath: string): Promise<void> {
     this.stopped = false;
@@ -70,13 +86,39 @@ $p.PlaySync()
 
 /** Test double — records play calls, no speakers. */
 export class MockAudioOutput implements AudioOutput {
-  readonly id = "mock-audio";
+  readonly id: string;
+  readonly displayName: string;
+  readonly kind = "mock" as const;
   readonly played: string[] = [];
   delayMs = 5;
   private stopped = false;
   private wait?: { resolve: () => void };
+  private healthStatus: RuntimeHealth["status"] = "OK";
+  private healthMessage = "mock ok";
+
+  constructor(opts?: { id?: string; displayName?: string }) {
+    this.id = opts?.id ?? "mock-audio";
+    this.displayName = opts?.displayName ?? "Mock audio";
+  }
+
+  setHealth(status: RuntimeHealth["status"], message = "mock"): void {
+    this.healthStatus = status;
+    this.healthMessage = message;
+  }
+
+  async health(): Promise<RuntimeHealth> {
+    return {
+      component: `audio:${this.id}`,
+      status: this.healthStatus,
+      message: this.healthMessage,
+      checkedAt: nowIso()
+    };
+  }
 
   async play(filePath: string): Promise<void> {
+    if (this.healthStatus === "DOWN") {
+      throw new Error(`AUDIO_DEVICE_DOWN:${this.id}`);
+    }
     this.stopped = false;
     this.played.push(filePath);
     await new Promise<void>((resolve) => {

@@ -55,11 +55,20 @@ export class VoiceMediaSession implements MediaSession {
   }
 
   async health(): Promise<RuntimeHealth> {
-    const h = await this.tts.health();
+    const [ttsH, audioH] = await Promise.all([this.tts.health(), this.audio.health()]);
+    const worst =
+      ttsH.status === "DOWN" || audioH.status === "DOWN"
+        ? "DOWN"
+        : ttsH.status === "DEGRADED" || audioH.status === "DEGRADED"
+          ? "DEGRADED"
+          : ttsH.status === "DISABLED" || audioH.status === "DISABLED"
+            ? "DISABLED"
+            : "OK";
     return {
-      ...h,
       component: `media:voice:${this.accountId.slice(0, 8)}`,
-      message: `${h.message} · scene=${this.scene}`
+      status: worst,
+      message: `tts=${ttsH.message ?? ttsH.status} · audio=${audioH.message ?? audioH.status} · scene=${this.scene}`,
+      checkedAt: new Date().toISOString()
     };
   }
 

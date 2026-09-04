@@ -4,21 +4,33 @@ Windows desktop app that helps one human operator run **one or many** TikTok com
 
 **Product philosophy:** human-supervised autonomy. AI handles repetitive work; the operator can approve, edit, cancel, or take over at any time.
 
-**Current milestone:** Development **0.3.x** (multi-live + operator hardening + voice). package version remains `0.1.0` until a deliberate release. **Not production-ready.**
+**Current milestone:** Development **0.4.x** — media routing + avatar **foundation**. package version remains `0.1.0` until deliberate release after real smoke. **Not production-ready.**
 
 ## What works in this milestone
 
 - Secure Electron boundary + typed preload + account-aware IPC.
-- React operator UI (VI/EN): Live Center, Account Detail, Voice, help, errors/toasts.
-- SQLite multi-live model (accounts, settings, sessions, events, approvals, products, media profiles).
+- React operator UI (VI/EN): Live Center, Account Detail (scene preview + picture/sound check), Voice / avatar hub, help, errors/toasts.
+- SQLite multi-live model through schema v8 (accounts, media profiles, avatar assets, output modes, …).
 - Per-account live runtimes, TikTok connectors, LIVE Manager profiles.
 - Comment feed isolation, cross-source event dedupe, approval session binding.
 - Session epoch guards + crash recovery (no auto-resume).
-- Fair AI request scheduler + license/hardware capacity + Windows resource monitor.
-- Voice pipeline: MediaSession + Windows SAPI TTS + local speaker preview (no avatar).
+- Fair **AI** request scheduler (Gemini) + separate **GPU** media scheduler (avatar admission).
+- License/hardware capacity + Windows resource monitor.
+- Voice / avatar foundation: output modes, Windows SAPI TTS, audio endpoint routing, AvatarProvider adapters (LiveTalking external, MuseTalk-local sidecar), avatar library, SceneEngine local preview.
+- Media Readiness Center: dry-run livestream (no TikTok) + 3-account token check.
 - Human takeover / emergency stop (TikTok stays connected).
-- Batch start-ready / stop-all in main process; realtime app events.
-- Vitest + CI; DEMO smoke vs gated REAL smoke checklist.
+- Batch start-ready / stop-all; realtime app events.
+- Vitest + CI; DEMO smoke vs gated REAL smoke checklists.
+
+## What is explicitly not claimed
+
+- Real 3-account TikTok/Gemini smoke PASS
+- Real 3-account audio isolation PASS
+- Real multi virtual camera PASS
+- Avatar realtime FPS target PASS
+- Production installer / signing / auto-update
+
+See `docs/MEDIA_REAL_SMOKE_TEST.md` (GATE A–F).
 
 ## First run
 
@@ -41,6 +53,8 @@ worker-env\Scripts\pip install -r workers/gemini_worker/requirements.txt
 worker-env\Scripts\pip install -r workers/tiktok_worker/requirements.txt
 ```
 
+Optional MuseTalk local worker (mock by default): see `docs/MUSETALK_LOCAL.md`.
+
 ## Tests
 
 | Script | Purpose |
@@ -60,6 +74,6 @@ worker-env\Scripts\pip install -r workers/tiktok_worker/requirements.txt
 
 ## Important honesty
 
-This is **not** a production claim. Real TikTok, Gemini, Khepree production lease, installer, avatar, and virtual camera/audio are **not** validated as shipping-ready. Reverse-engineered web connectors can break; they stay behind replaceable adapters.
+This is **not** a production claim. Real TikTok, Gemini, Khepree production lease, installer, multi virtual camera, and avatar FPS are **not** validated as shipping-ready. Reverse-engineered web connectors can break; they stay behind replaceable adapters.
 
-See `docs/PROJECT_STATE.md`, `docs/FEATURE_MATRIX.md`, `docs/MULTI_LIVE_ARCHITECTURE.md`, `docs/REAL_SMOKE_TEST.md`, `docs/REVIEW_NEXT.md`.
+See `docs/PROJECT_STATE.md`, `docs/FEATURE_MATRIX.md`, `docs/MULTI_LIVE_ARCHITECTURE.md`, `docs/VIRTUAL_CAMERA_FEASIBILITY.md`, `docs/REAL_SMOKE_TEST.md`, `docs/MEDIA_REAL_SMOKE_TEST.md`, `docs/REVIEW_NEXT.md`.

@@ -809,7 +809,7 @@ button.primary:disabled { opacity:.45; cursor:not-allowed; }
 }
 .errorTechDetails { white-space: pre-wrap; max-height: 140px; overflow: auto; }
 
-/* 뿓 Live Center (multi-account) 뿓 */
+/* 혰혰 Live Center (multi-account) 혰혰 */
 .liveCenterPage { display: grid; gap: 16px; }
 .liveCenterMetrics {
   display: grid;
@@ -987,6 +987,75 @@ button.primary:disabled { opacity:.45; cursor:not-allowed; }
   padding: 10px 12px;
   font-size: 14px;
 }
+.wizardLead {
+  margin: 0;
+  font-size: 15px;
+  color: #e7eefc;
+  font-weight: 600;
+}
+.wizardChoices {
+  display: grid;
+  gap: 10px;
+}
+.wizardChoice {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #2a3550;
+  background: #0b1220;
+  color: #c5d0e6;
+  cursor: pointer;
+}
+.wizardChoice strong { color: #e7eefc; font-size: 14px; }
+.wizardChoice span { font-size: 12px; color: #8b98b3; }
+.wizardChoice.active {
+  border-color: #4f7cff;
+  background: rgba(79, 124, 255, 0.12);
+}
+.wizardAlert {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #8a4b2a;
+  background: rgba(196, 92, 38, 0.12);
+  color: #ffd2a8;
+  font-size: 13px;
+}
+.wizardAlert p { margin: 0; }
+.wizardCheck {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px;
+  color: #ffd2a8;
+}
+.wizardCheck input { width: auto; margin-top: 2px; }
+.wizardList {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  color: #c5d0e6;
+  font-size: 13px;
+}
+.voiceAudioSummary {
+  margin: 0;
+  font-size: 13px;
+  color: #c5d0e6;
+}
+.voiceAudioSummary strong { color: #7d8aa6; }
+.voiceOutputMode {
+  display: grid;
+  gap: 8px;
+}
+.voiceOutputMode h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
 
 .accountDetailPage { display: grid; gap: 14px; }
 .accountDetailHeader {
@@ -1078,6 +1147,21 @@ button.primary:disabled { opacity:.45; cursor:not-allowed; }
   background: rgba(13, 19, 35, 0.6);
 }
 .voiceEngineRow strong { font-size: 12px; color: #7d8aa6; }
+.voiceAudioSection {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+.voiceAudioSection h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.voiceAudioSection .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
 
 .takeoverBanner {
   margin: 0 0 14px;
@@ -1107,4 +1191,197 @@ button.primary:disabled { opacity:.45; cursor:not-allowed; }
   font-size: 11px;
   opacity: 0.75;
   font-weight: 600;
+}
+
+.avatarHub { display: grid; gap: 12px; }
+.avatarHubTabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.avatarHubTabs .activeTab {
+  border-color: #4a6cf7;
+  color: #dce4ff;
+}
+.avatarGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.avatarCard {
+  border: 1px solid #2a3550;
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: #0f1624;
+}
+.avatarCardPreview {
+  height: 110px;
+  border-radius: 10px;
+  background: #182033;
+  display: grid;
+  place-items: center;
+  color: #7d8aa6;
+  overflow: hidden;
+}
+.avatarCardPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.avatarStatus { font-size: 12px; font-weight: 700; margin: 0; }
+.avatarStatus.ok { color: #6dcea0; }
+.avatarStatus.warn { color: #e6c36a; }
+.avatarStatus.bad { color: #f08a8a; }
+.avatarCardActions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.avatarTips {
+  margin: 0;
+  padding-left: 18px;
+  color: #9aa8c4;
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+.avatarVideoPreview {
+  border: 1px dashed #2a3550;
+  border-radius: 12px;
+  padding: 16px;
+  background: #121a2a;
+}
+.avatarProgressTrack {
+  height: 10px;
+  border-radius: 999px;
+  background: #1a2438;
+  overflow: hidden;
+}
+.avatarProgressBar {
+  height: 100%;
+  background: linear-gradient(90deg, #3d5afe, #6d8cff);
+  transition: width 0.2s ease;
+}
+.rowActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.accountDetailOverviewGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .accountDetailOverviewGrid {
+    grid-template-columns: 1fr;
+  }
+}
+.scenePreviewPanel {
+  border: 1px solid #2a3550;
+  border-radius: 14px;
+  padding: 12px;
+  background: #0f1624;
+  display: grid;
+  gap: 10px;
+}
+.scenePreviewStage {
+  display: grid;
+  place-items: center;
+  background: #070b12;
+  border-radius: 10px;
+  min-height: 280px;
+}
+.scenePreviewCanvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.mediaReadinessCenter {
+  display: grid;
+  gap: 12px;
+}
+.mediaReadyOverall {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #2a3550;
+}
+.mediaReadyOverall.ready {
+  border-color: #235749;
+  background: #0f1c18;
+}
+.mediaReadyOverall.warn {
+  border-color: #5c4824;
+  background: #1a160e;
+}
+.mediaReadyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.mediaReadyItem {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #2a3550;
+  background: #0f1624;
+}
+.mediaReadyItem > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.mediaReadyStatus {
+  font-size: 12px;
+  color: #9aa8c4;
+}
+.mediaReadyItem.ready {
+  border-color: #235749;
+}
+.mediaReadyItem.warn {
+  border-color: #5c4824;
+}
+.mediaReadyItem.blocked {
+  border-color: #6a3038;
+}
+.mediaReadyItem.optional {
+  opacity: 0.85;
+}
+.mediaReadyActions {
+  margin-top: 4px;
+}
+.mediaReadyResult {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #2a3550;
+  background: #0b1220;
+  display: grid;
+  gap: 6px;
+}
+.mediaReadyMultiList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.mediaReadyMultiList li {
+  display: grid;
+  gap: 2px;
+}
+.mediaReadyMultiList code {
+  color: #f0c674;
 }

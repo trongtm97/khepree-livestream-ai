@@ -84,6 +84,16 @@ export function createTestManager(
   h: TempDbHarness,
   opts?: { maxConcurrentLives?: number; maxHardwareRuntimes?: number }
 ): MultiLiveRuntimeManager {
+  // Tests exercise SPEAK; production default ASSIST_ONLY would mute TTS.
+  const ensure = h.accountLiveSettings.ensure.bind(h.accountLiveSettings);
+  h.accountLiveSettings.ensure = (accountId: string) => {
+    const s = ensure(accountId);
+    if (s.outputMode === "ASSIST_ONLY") {
+      return h.accountLiveSettings.upsert({ accountId, outputMode: "VOICE_ONLY" });
+    }
+    return s;
+  };
+
   return new MultiLiveRuntimeManager({
     accounts: h.accounts,
     accountLiveSettings: h.accountLiveSettings,

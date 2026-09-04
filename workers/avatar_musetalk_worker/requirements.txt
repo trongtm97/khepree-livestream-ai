@@ -1,0 +1,6 @@
+# Spike dependencies — do NOT pull torch into Electron.
+# Real MuseTalk: install torch+CUDA in this venv separately (operator), then
+# set KHEPREE_MUSETALK_ENGINE=real. Never auto-download multi-GB weights.
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2.0
