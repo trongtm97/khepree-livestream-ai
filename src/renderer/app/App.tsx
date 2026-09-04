@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppSnapshot } from "../../shared/ipc";
 import type { AppLocale } from "../../shared/locale";
 import type { HelpDrawerState } from "../help";
@@ -11,6 +11,7 @@ import { AppSidebar } from "../components/layout/AppSidebar";
 import { ComingSoonPage } from "../pages/ComingSoonPage";
 import { ConnectionsPage } from "../pages/ConnectionsPage";
 import { HelpPage } from "../pages/HelpPage";
+import { HistoryPage } from "../pages/HistoryPage";
 import { LiveControlPage } from "../pages/LiveControlPage";
 import { CommentsPage } from "../pages/CommentsPage";
 import { OnboardingWizard } from "../pages/OnboardingWizard";
@@ -37,16 +38,6 @@ export function App() {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
-
-  const refresh = useCallback(async () => {
-    setSnapshot(await window.khepreeLivestreamAI.snapshot());
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(), 1200);
-    return () => clearInterval(timer);
-  }, [refresh]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((item) => item.id !== id));
@@ -87,6 +78,73 @@ export function App() {
     [locale]
   );
 
+
+  // Backoff state for background polling — kept in refs so a failed poll never
+  // re-renders the shell or re-creates the timer loop.
+  const pollFailures = useRef(0);
+  const errorShown = useRef(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await window.khepreeLivestreamAI.snapshot();
+      setSnapshot(next);
+      pollFailures.current = 0;
+      errorShown.current = false;
+      return next;
+    } catch (error) {
+      pollFailures.current += 1;
+      throw error;
+    }
+  }, []);
+
+  /**
+   * Adaptive polling.
+   *
+   * The console needs a tight loop while live (auto-approve countdowns are only
+   * a few seconds long) but a busy stream can also produce hundreds of events,
+   * so: fast while live, relaxed when idle, paused entirely when the window is
+   * hidden, and backed off when IPC fails instead of hammering a broken channel.
+   */
+  useEffect(() => {
+    const LIVE_MS = 900;
+    const IDLE_MS = 2500;
+    const MAX_BACKOFF_MS = 15_000;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const schedule = (delay: number) => {
+      if (cancelled) return;
+      timer = setTimeout(tick, delay);
+    };
+
+    const tick = async () => {
+      if (cancelled) return;
+      // A hidden window pays for nothing and cannot be supervised anyway.
+      if (typeof document !== "undefined" && document.hidden) {
+        schedule(IDLE_MS);
+        return;
+      }
+      const base = snapshot?.liveRunning ? LIVE_MS : IDLE_MS;
+      try {
+        await refresh();
+        schedule(base);
+      } catch (error) {
+        const backoff = Math.min(base * 2 ** pollFailures.current, MAX_BACKOFF_MS);
+        // Surface once; repeated background failures must not spam dialogs.
+        if (!errorShown.current) {
+          errorShown.current = true;
+          presentError(error);
+        }
+        schedule(backoff);
+      }
+    };
+
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [refresh, presentError, snapshot?.liveRunning]);
   const run = useCallback(
     async (fn: () => Promise<unknown>) => {
       setLoading(true);
@@ -152,7 +210,9 @@ export function App() {
     loading,
     tab,
     setTab,
-    refresh,
+    refresh: async () => {
+      await refresh();
+    },
     run,
     changeLocale,
     restartOnboarding,
@@ -194,7 +254,7 @@ export function App() {
             {tab === "script" && <ComingSoonPage feature="script" />}
             {tab === "avatar" && <ComingSoonPage feature="avatar" />}
             {tab === "connections" && <ConnectionsPage snapshot={snapshot} />}
-            {tab === "logs" && <ComingSoonPage feature="logs" />}
+            {tab === "history" && <HistoryPage />}
             {tab === "settings" && <SettingsPage snapshot={snapshot} />}
             {tab === "help" && <HelpPage />}
           </main>

@@ -461,6 +461,28 @@ export const ERROR_COPY: Record<string, ErrorCopy> = {
       ["Refresh", "Go to Live control", "View technical details"]
     )
   },
+  [ERROR_CODES.MEDIA_VOICE_MUTED]: {
+    title: L("Đang tắt tiếng AI", "AI voice is muted"),
+    userMessage: L(
+      "Bạn đang tắt tiếng AI để tự nói. Bật lại tiếng AI trong Cài đặt giọng đọc nếu muốn AI nói tiếp.",
+      "You muted the AI so you can speak. Re-enable AI voice in Voice settings to let it speak again."
+    ),
+    recommendedActions: A(
+      ["Bật lại tiếng AI", "Mở cài đặt giọng đọc"],
+      ["Turn AI voice back on", "Open voice settings"]
+    )
+  },
+  [ERROR_CODES.TTS_TIMEOUT]: {
+    title: L("Giọng đọc bị treo", "Voice output timed out"),
+    userMessage: L(
+      "Câu nói dài quá nên hệ thống đã dừng lại. Hãy rút ngọn kịch bản hoặc thử lại.",
+      "The utterance was too long and was stopped. Shorten the script line and try again."
+    ),
+    recommendedActions: A(
+      ["Thử lại", "Mở cài đặt giọng đọc"],
+      ["Try again", "Open voice settings"]
+    )
+  },
   [ERROR_CODES.TITLE_REQUIRED]: {
     title: L("Thiếu tên sản phẩm", "Product name required"),
     userMessage: L(

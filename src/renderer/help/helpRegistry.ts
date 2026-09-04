@@ -47,6 +47,28 @@ export const MICRO_TIPS: MicroTip[] = [
     }
   },
   {
+    id: "voice.select",
+    title: {
+      vi: "Chọn giọng đọc",
+      en: "Pick a voice"
+    },
+    body: {
+      vi: "Máy sẽ dùng giọng có sẵn trong hệ điều hành. Nếu bán hàng tiếng Việt, chọn giọng có tên tiếng Việt. Không thấy giọng Việt? Cài thêm gói giọng trong Cài đặt Windows → Thời gian & ngôn ngữ → Lời nói.",
+      en: "The computer uses voices installed in the operating system. For Vietnamese selling, pick a voice with Vietnamese in its name. Missing? Install a language pack in Windows Settings → Time & Language → Speech."
+    }
+  },
+  {
+    id: "emergency.stop",
+    title: {
+      vi: "Dừng khẩn cấp",
+      en: "Emergency stop"
+    },
+    body: {
+      vi: "Nút an toàn. Tắt ngay âm thanh, hủy mọi câu trả lời đang chờ và chuyển sang chế độ thủ công để không gì tự chạy nữa. Livestream của bạn không bị dừng — chỉ AI ngừng tự động.",
+      en: "The safety button. Instantly silences audio, discards every pending reply, and drops to manual mode so nothing auto-runs again. Your livestream keeps going — only the AI stops acting on its own."
+    }
+  },
+  {
     id: "products.facts",
     title: {
       vi: "Thông tin sản phẩm",
@@ -273,14 +295,21 @@ export const PAGE_GUIDES: PageGuide[] = [
     ]
   },
   {
-    pageId: "logs",
-    title: { vi: "Hướng dẫn: Nhật ký", en: "Guide: Activity log" },
+    pageId: "history",
+    title: { vi: "Hướng dẫn: Lịch sử live", en: "Guide: Livestream history" },
     sections: [
       {
-        heading: { vi: "Sắp có", en: "Coming soon" },
+        heading: { vi: "Trang này để làm gì", en: "What this page is for" },
         body: {
-          vi: "Sau này bạn xem lại câu AI đã nói, lần duyệt, và lỗi kết nối. File nhật ký chưa có trong bản này.",
-          en: "Later you will review AI speech, approvals, and connection errors. File logging is not in this build yet."
+          vi: "Xem lại từng buổi phát sau khi kết thúc: thời lượng, số bình luận, số đơn hàng, bao nhiêu câu AI đã nói và bao nhiêu câu bạn từ chối. Bấm vào một buổi để xem lại từng câu trả lời.",
+          en: "Review each finished session: duration, comments, orders, how many lines the AI spoke, and how many you rejected. Click a session to inspect the individual replies."
+        }
+      },
+      {
+        heading: { vi: "Dữ liệu ở đâu", en: "Where the data lives" },
+        body: {
+          vi: "Toàn bộ lưu trên máy bạn, trong thư mục dữ liệu của ứng dụng. Không gửi lên máy chủ nào.",
+          en: "Everything is stored locally in the app data folder. Nothing is uploaded."
         }
       }
     ]

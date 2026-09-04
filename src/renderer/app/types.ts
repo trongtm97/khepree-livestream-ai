@@ -11,7 +11,7 @@ export type AppTab =
   | "script"
   | "avatar"
   | "connections"
-  | "logs"
+  | "history"
   | "settings"
   | "help";
 

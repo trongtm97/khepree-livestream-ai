@@ -10,7 +10,7 @@ import type { LlmContext, LlmProvider } from "../connectors/llm/types";
 import type { MediaProvider } from "../connectors/media/types";
 import { LiveEventBus } from "../core/event-bus";
 import { detectSalesCommentIntent } from "../../shared/sales-brain";
-import { ApprovalEngine } from "./approval-engine";
+import { ApprovalEngine, type ApprovalEngineOptions } from "./approval-engine";
 import { scoreComment } from "./comment-priority";
 import { LiveMemory } from "./live-memory";
 import { PolicyGuard } from "./policy-guard";
@@ -21,26 +21,35 @@ export interface LiveOrchestratorDeps {
   llm: LlmProvider;
   media: MediaProvider;
   getCurrentProduct: () => ProductDNA | undefined;
-  onApprovalChanged?: (item: ApprovalItem) => void;
+  /** Called on approval changes; `undefined` means the queue was cleared. */
+  onApprovalChanged?: (item: ApprovalItem | undefined) => void;
   /** Persist session row when live starts/stops. */
   onSessionStart?: (sessionId: string, mode: AutomationMode) => void;
   onSessionEnd?: (sessionId: string, finalState: string) => void;
+  /**
+   * Override approval timing/retention. Production keeps the defaults so the
+   * operator always gets a cancellable countdown; tests shorten the delay.
+   */
+  approvalOptions?: Partial<ApprovalEngineOptions>;
 }
 
 export class LiveOrchestrator {
   private mode: AutomationMode = "SUPERVISED_AUTO";
   private running = false;
   private readonly stateMachine = new SalesStateMachine();
-  private readonly approvals = new ApprovalEngine({
-    supervisedDelayMs: 3500,
-    confidenceThreshold: 0.92
-  });
+  private readonly approvals: ApprovalEngine;
   private readonly guard = new PolicyGuard();
   private readonly memory = new LiveMemory();
   private unsubscribe?: () => void;
   private timer?: NodeJS.Timeout;
 
-  constructor(private readonly deps: LiveOrchestratorDeps) {}
+  constructor(private readonly deps: LiveOrchestratorDeps) {
+    this.approvals = new ApprovalEngine({
+      supervisedDelayMs: 3500,
+      confidenceThreshold: 0.92,
+      ...deps.approvalOptions
+    });
+  }
 
   get isRunning(): boolean {
     return this.running;
@@ -56,6 +65,14 @@ export class LiveOrchestrator {
   }
   getMemorySnapshot() {
     return this.memory.snapshot();
+  }
+
+  /** Bounded-size diagnostics so the UI can prove retention is working. */
+  getQueueStats(): { pending: number; retained: number } {
+    return {
+      pending: this.approvals.listPending().length,
+      retained: this.approvals.size
+    };
   }
 
   setMode(mode: AutomationMode): void {
@@ -89,11 +106,13 @@ export class LiveOrchestrator {
   }
 
   stop(): void {
+    this.running = false;
+    // Stop the machine first so the persisted session row records the state the
+    // session actually ended in (IDLE), not the last sales state.
+    this.stateMachine.stop();
     if (this.memory.id) {
       this.deps.onSessionEnd?.(this.memory.id, this.stateMachine.current);
     }
-    this.running = false;
-    this.stateMachine.stop();
     this.memory.setLastState(this.stateMachine.current);
     this.memory.clearSession();
     this.unsubscribe?.();
@@ -101,14 +120,23 @@ export class LiveOrchestrator {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
     void this.deps.media.stopSpeech();
+    // Nothing from this session may survive into the next one — a stale
+    // proposal from an hour ago must never be spoken in a new livestream.
+    this.approvals.expirePending();
+    this.deps.onApprovalChanged?.(undefined);
   }
 
+  /**
+   * Operator decision. Idempotent: a click that lands after the auto-approve
+   * countdown already fired is a no-op instead of an error dialog.
+   */
   async resolveApproval(
     id: string,
     decision: "approve" | "reject",
     editedSpeech?: string
   ): Promise<void> {
     const item = this.approvals.resolve(id, decision, editedSpeech);
+    if (!item) return;
     this.deps.onApprovalChanged?.(item);
     if (item.status === "APPROVED") await this.execute(item);
   }
@@ -117,8 +145,9 @@ export class LiveOrchestrator {
     return this.approvals.supervisedDelayMs;
   }
 
-  cancelAutoApproval(id: string): ApprovalItem {
+  cancelAutoApproval(id: string): ApprovalItem | undefined {
     const item = this.approvals.cancelAutoApprove(id);
+    if (!item) return undefined;
     this.deps.onApprovalChanged?.(item);
     return item;
   }
@@ -133,6 +162,24 @@ export class LiveOrchestrator {
   stopAutomation(): void {
     this.approvals.cancelAllAutoApprovals();
     this.mode = "MANUAL_ASSIST";
+  }
+
+  /**
+   * Operator "Dừng khẩn cấp" — the panic button demanded by the
+   * human-supervised autonomy rule. In one action it:
+   *   1. silences any speech already playing,
+   *   2. drops every countdown and pending proposal,
+   *   3. falls back to MANUAL_ASSIST so nothing can auto-execute again.
+   * The session itself keeps running: the operator stays on air, just fully
+   * in control.
+   */
+  emergencyStop(): number {
+    void this.deps.media.stopSpeech();
+    this.approvals.cancelAllAutoApprovals();
+    const dropped = this.approvals.expirePending();
+    this.mode = "MANUAL_ASSIST";
+    if (dropped > 0) this.deps.onApprovalChanged?.(undefined);
+    return dropped;
   }
 
   private async handleEvent(event: LiveEvent): Promise<void> {

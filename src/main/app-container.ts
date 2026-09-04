@@ -6,6 +6,7 @@ import {
   LiveEventRepository,
   LiveSessionRepository,
   ProductRepository,
+  SessionHistoryRepository,
   SettingsRepository
 } from "./db/repositories";
 import { LiveEventBus } from "./core/event-bus";
@@ -21,7 +22,7 @@ import {
   assertLiveManagerContract,
   LiveManagerManager
 } from "./connectors/tiktok/live-manager-manager";
-import { MockMediaProvider } from "./connectors/media/mock-media-provider";
+import { MediaManager } from "./connectors/media/media-manager";
 import { CommentFeedService } from "./live/comment-feed-service";
 import { LiveOrchestrator } from "./live/live-orchestrator";
 import { KhepreeAccessService } from "./khepree/khepree-access-service";
@@ -42,6 +43,7 @@ export class AppContainer {
   readonly events: LiveEventRepository;
   readonly approvals: ApprovalRepository;
   readonly sessions: LiveSessionRepository;
+  readonly history: SessionHistoryRepository;
   readonly eventBus = new LiveEventBus();
   readonly khepree = new KhepreeAccessService();
   readonly heartbeat = new KhepreeHeartbeatService(this.khepree);
@@ -49,7 +51,7 @@ export class AppContainer {
   readonly tiktok: TikTokConnectorManager;
   readonly liveManager: LiveManagerManager;
   readonly comments: CommentFeedService;
-  readonly media = new MockMediaProvider();
+  readonly media: MediaManager;
   readonly live: LiveOrchestrator;
 
   constructor() {
@@ -59,6 +61,7 @@ export class AppContainer {
     this.events = new LiveEventRepository(this.db);
     this.approvals = new ApprovalRepository(this.db);
     this.sessions = new LiveSessionRepository(this.db);
+    this.history = new SessionHistoryRepository(this.db);
     this.llm = new LlmProviderManager({
       appRoot: resolveAppRoot(),
       getPreferredProvider: () => this.settings.getLlmPreferredProvider(),
@@ -81,12 +84,20 @@ export class AppContainer {
       onEvent: (event) => this.events.save(this.live.sessionId ?? null, event)
     });
     this.comments = new CommentFeedService({ eventBus: this.eventBus });
+    this.media = new MediaManager({
+      getVoiceHint: () => this.settings.getMediaVoice(),
+      setVoiceHint: (voice) => this.settings.setMediaVoice(voice),
+      getVoiceEnabled: () => this.settings.getMediaVoiceEnabled(),
+      setVoiceEnabled: (enabled) => this.settings.setMediaVoiceEnabled(enabled)
+    });
     this.live = new LiveOrchestrator({
       eventBus: this.eventBus,
       llm: this.llm,
       media: this.media,
       getCurrentProduct: () => this.resolveCurrentProduct(),
       onApprovalChanged: (item) => {
+        // `undefined` is the "queue was cleared" signal (stop / emergency stop).
+        if (!item) return;
         this.approvals.save(this.live.sessionId ?? null, item);
         this.comments.applyApproval(item);
       },
@@ -135,6 +146,7 @@ export class AppContainer {
       this.settings.setLlmPreferredProvider("gemini-web");
     }
     this.comments.start();
+    await this.media.initialize();
     await this.khepree.initialize();
     this.heartbeat.start();
   }
@@ -146,6 +158,7 @@ export class AppContainer {
     void this.llm.dispose();
     void this.tiktok.dispose();
     void this.liveManager.dispose();
+    void this.media.dispose();
     this.db.close();
   }
 }

@@ -28,8 +28,21 @@ export function registerIpc(container: AppContainer): void {
     gemini: await container.llm.getPublicState(),
     tiktok: container.tiktok.getPublicState(),
     liveManager: container.liveManager.getPublicState(),
-    comments: container.comments.getSnapshot()
+    comments: container.comments.getSnapshot(),
+    media: container.media.getPublicState()
   }));
+
+  ipcMain.handle(IPC.SESSION_LIST, async (_event, limit?: number) => {
+    return container.history.list(typeof limit === "number" ? limit : 20);
+  });
+
+  ipcMain.handle(IPC.SESSION_APPROVALS, async (_event, sessionId: string, limit?: number) => {
+    const id = String(sessionId ?? "").trim();
+    if (!id) return [];
+    return container.history.listApprovals(id, typeof limit === "number" ? limit : 50);
+  });
+
+  ipcMain.handle(IPC.SESSION_TOTALS, async () => container.history.totals());
 
   ipcMain.handle(IPC.SETTINGS_SET_LOCALE, async (_event, locale: AppLocale) => {
     const next = normalizeAppLocale(locale);
@@ -73,6 +86,38 @@ export function registerIpc(container: AppContainer): void {
 
   ipcMain.handle(IPC.APPROVAL_STOP_AUTOMATION, async () => {
     container.live.stopAutomation();
+  });
+
+  /**
+   * "Dừng khẩn cấp" — silence the speaker, drop every pending proposal, and
+   * fall back to MANUAL_ASSIST so nothing can auto-execute again.
+   * Returns how many queued proposals were discarded, for the operator toast.
+   */
+  ipcMain.handle(IPC.LIVE_EMERGENCY_STOP, async () => {
+    return container.live.emergencyStop();
+  });
+
+  ipcMain.handle(IPC.MEDIA_SET_VOICE, async (_event, voice: string | undefined) => {
+    container.media.setVoice(voice);
+    return container.media.getPublicState();
+  });
+
+  ipcMain.handle(IPC.MEDIA_SET_VOICE_ENABLED, async (_event, enabled: boolean) => {
+    container.media.setVoiceEnabled(Boolean(enabled));
+    return container.media.getPublicState();
+  });
+
+  ipcMain.handle(IPC.MEDIA_REFRESH, async () => container.media.refreshEngine());
+
+  ipcMain.handle(IPC.MEDIA_TEST_SPEECH, async (_event, text?: string) => {
+    if (!container.media.voiceEnabled) throw new Error("MEDIA_VOICE_MUTED");
+    await container.media.speak(
+      typeof text === "string" && text.trim()
+        ? text.trim().slice(0, 300)
+        : container.settings.getLocale() === "en"
+          ? "This is a voice test from Khepree Livestream AI."
+          : "Đây là bài kiểm tra giọng đọc từ Khepree Livestream AI."
+    );
   });
 
   ipcMain.handle(IPC.PRODUCT_SAVE, async (_event, product: ProductDNA) => {

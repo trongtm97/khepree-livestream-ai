@@ -1,4 +1,4 @@
-import { Play, Square } from "lucide-react";
+import { Play, ShieldAlert, Square } from "lucide-react";
 import type { AppSnapshot } from "../../../shared/ipc";
 import type { AutomationMode } from "../../../shared/live-types";
 import { useAppShell } from "../../app/AppShellContext";
@@ -19,7 +19,7 @@ const MODE_TIP: Partial<Record<AutomationMode, string>> = {
 };
 
 export function LiveControls({ snapshot }: { snapshot: AppSnapshot }) {
-  const { t, run, setTab } = useAppShell();
+  const { t, run, setTab, notify } = useAppShell();
   const modeTipId = MODE_TIP[snapshot.automationMode] ?? "mode.supervised_auto";
   const readiness = buildReadiness(snapshot, t);
   const blocked = !snapshot.liveRunning && !readiness.canStartLive;
@@ -52,6 +52,30 @@ export function LiveControls({ snapshot }: { snapshot: AppSnapshot }) {
           {t("control.state")}: <strong>{labelLiveState(t, snapshot.liveState)}</strong>
         </div>
         <div className="grow" />
+        {snapshot.liveRunning ? (
+          <div className="controlWithHelp">
+            <button
+              className="dangerOutline"
+              title={t("emergency.stopBody")}
+              onClick={() =>
+                void run(async () => {
+                  // Deliberately does NOT stop the livestream: the operator stays
+                  // on air, only the AI stops acting on its own.
+                  const dropped = await window.khepreeLivestreamAI.emergencyStop();
+                  notify({
+                    tone: "warning",
+                    title: t("emergency.stopTitle"),
+                    message:
+                      dropped > 0 ? t("emergency.done", { count: dropped }) : t("emergency.none")
+                  });
+                })
+              }
+            >
+              <ShieldAlert size={18} /> {t("emergency.stop")}
+            </button>
+            <MicroHelp tipId="emergency.stop" />
+          </div>
+        ) : null}
         {!snapshot.liveRunning ? (
           <div className="controlWithHelp">
             <button

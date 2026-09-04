@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Languages, RotateCcw, Shield } from "lucide-react";
 import type { AppSnapshot } from "../../shared/ipc";
+import { DEFAULT_MEDIA_PUBLIC_STATE } from "../../shared/media-contracts";
 import { APP_LOCALES, type AppLocale } from "../../shared/locale";
 import { useAppShell } from "../app/AppShellContext";
+import { VoicePanel } from "../components/media/VoicePanel";
 
 export function SettingsPage({ snapshot }: { snapshot?: AppSnapshot }) {
   const { t, locale, loading, changeLocale, restartOnboarding, run, refresh, notify } =
@@ -54,6 +56,10 @@ export function SettingsPage({ snapshot }: { snapshot?: AppSnapshot }) {
           </label>
           <p className="settingsHint">{t("settings.languageSaved")}</p>
         </div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <VoicePanel media={snapshot?.media ?? DEFAULT_MEDIA_PUBLIC_STATE} />
       </div>
 
       <div className="panel" style={{ marginTop: 14 }}>

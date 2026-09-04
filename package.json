@@ -9,7 +9,9 @@
   "protocols": [
     {
       "name": "Khepree Livestream AI",
-      "schemes": ["khepreelivestreamai"]
+      "schemes": [
+        "khepreelivestreamai"
+      ]
     }
   ],
   "scripts": {
@@ -18,6 +20,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:foundation": "node scripts/foundation-check.mjs",
     "test:sales-brain": "npx --yes tsx src/shared/sales-brain/self-check.ts",
     "doctor": "node scripts/dev-doctor.mjs",
@@ -49,6 +53,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^43.5.1",
     "typescript": "^5.7.2",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
   }
 }

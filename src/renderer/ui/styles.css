@@ -776,3 +776,52 @@ button.primary:disabled { opacity:.45; cursor:not-allowed; }
   word-break: break-all;
 }
 .errorTechDetails { white-space: pre-wrap; max-height: 140px; overflow: auto; }
+
+/* ---- Voice / media output ---- */
+.mediaStatusBox.ok { border-color:#235749; }
+.mediaStatusBox.warn { border-color:#5c4824; }
+.voiceFacts {
+  list-style:none; margin:12px 0 0; padding:0; display:grid; gap:6px;
+  color:#8390aa; font-size:12px;
+}
+.voiceFacts li { display:flex; gap:8px; align-items:baseline; }
+.fieldRow { display:grid; gap:6px; margin-bottom:12px; }
+.fieldRow > span { display:flex; align-items:center; gap:6px; font-size:13px; color:#c5cfe4; }
+.fieldRow select {
+  background:#0d1323; color:#e6ecf8; border:1px solid #28324a;
+  border-radius:10px; padding:9px 10px; font-size:13px; width:100%;
+}
+.fieldRow select:disabled { opacity:.5; cursor:not-allowed; }
+.voiceExplain {
+  margin-top:12px; border:1px solid #28324a; border-radius:10px;
+  background:rgba(13,19,35,.6); padding:10px 12px;
+}
+.voiceExplain summary { cursor:pointer; font-size:13px; color:#c5cfe4; font-weight:600; }
+.voiceExplain p { margin:8px 0 0; color:#8390aa; font-size:12px; line-height:1.5; }
+button.dangerOutline {
+  background:transparent; color:#f0a0a8; border:1px solid #6a3038;
+  border-radius:10px; padding:9px 14px; font-weight:600; cursor:pointer;
+  display:inline-flex; align-items:center; gap:8px;
+}
+button.dangerOutline:hover { background:#2a1216; }
+
+/* ---- History page ---- */
+.historyPage h3 { margin:0 0 12px; font-size:15px; }
+.tableWrap { overflow-x:auto; border:1px solid #28324a; border-radius:12px; }
+.historyTable { width:100%; border-collapse:collapse; font-size:13px; }
+.historyTable th, .historyTable td {
+  padding:10px 12px; text-align:left; border-bottom:1px solid #1f2942; white-space:nowrap;
+}
+.historyTable th { color:#7d8aa6; font-weight:600; font-size:12px; background:#101728; }
+.historyTable tbody tr { cursor:pointer; }
+.historyTable tbody tr:hover { background:#141d31; }
+.historyTable tbody tr.selected { background:#16233c; }
+.historyTable tbody tr:last-child td { border-bottom:none; }
+.historyApprovalList { list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+.historyApprovalList li {
+  border:1px solid #28324a; border-radius:10px; padding:10px 12px; background:rgba(13,19,35,.6);
+}
+.historyApprovalList p { margin:6px 0 0; color:#c5cfe4; font-size:13px; }
+.historyApprovalHead { display:flex; gap:10px; align-items:center; font-size:12px; color:#8390aa; }
+.historyApprovalHead strong { color:#e6ecf8; }
+.historyRisk { color:#e7c16d !important; font-size:12px !important; }

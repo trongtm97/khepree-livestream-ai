@@ -14,6 +14,9 @@ Foundation repository for a Windows desktop application that helps one human ope
 - TikTokLive sidecar contract for unofficial realtime comments/events, again isolated as a separate process.
 - TikTok LIVE Manager Playwright observer scaffold.
 - Livestream Event Bus, Sales State Machine, comment priority scorer, Approval Engine, and Live Orchestrator.
+- Offline text-to-speech output (OS speech engine) with a speech queue and an operator voice kill-switch.
+- Emergency stop that silences audio and drops to manual mode without ending the livestream.
+- Livestream history — reviews recorded sessions, comments, orders, and what the AI said.
 - Khepree commercial licensing foundation modeled after Khepree Novel AI: PKCE, device Ed25519 identity, encrypted refresh token, signed lease verification, heartbeat state, and fail-closed protected actions.
 - Dev-mock adapters so later AI coding agents can extend the system without destroying the architecture.
 
@@ -24,8 +27,20 @@ npm install
 copy .env.example .env
 npm run doctor
 npm run test:foundation
+npm test
 npm start
 ```
+
+`npm test` runs the Vitest suite over the approval engine, live orchestrator,
+event bus, media manager, and session history SQL.
+
+### Voice output
+
+The AI's drafted lines are spoken using the computer's own speech engine
+(Windows SAPI, macOS `say`, or Linux `espeak-ng`) — no API key, no per-character
+billing, and nothing leaves the machine. If no engine is available the app says
+so in **Settings → AI voice** instead of pretending to speak.
+
 
 For Gemini worker dependencies:
 

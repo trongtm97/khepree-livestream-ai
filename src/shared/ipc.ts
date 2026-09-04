@@ -11,6 +11,8 @@ import type { OnboardingState } from "./onboarding";
 import type { TikTokPublicState } from "./tiktok-contracts";
 import type { LiveManagerPublicState } from "./live-manager-contracts";
 import type { CommentFeedSnapshot } from "./comment-feed";
+import type { MediaPublicState } from "./media-contracts";
+import type { LiveSessionSummary, SessionTotals } from "./session-history";
 
 export const IPC = {
   APP_SNAPSHOT: "app:snapshot",
@@ -21,6 +23,7 @@ export const IPC = {
   APPROVAL_CANCEL_AUTO: "approval:cancel-auto",
   APPROVAL_CANCEL_NEAREST_AUTO: "approval:cancel-nearest-auto",
   APPROVAL_STOP_AUTOMATION: "approval:stop-automation",
+  LIVE_EMERGENCY_STOP: "live:emergency-stop",
   GEMINI_HEALTH: "gemini:health",
   GEMINI_CONNECT: "gemini:connect",
   GEMINI_DISCONNECT: "gemini:disconnect",
@@ -33,6 +36,10 @@ export const IPC = {
   GEMINI_TEST: "gemini:test",
   GEMINI_SAVE_SESSION: "gemini:save-session",
   GEMINI_CLEAR_SESSION: "gemini:clear-session",
+  MEDIA_SET_VOICE: "media:set-voice",
+  MEDIA_SET_VOICE_ENABLED: "media:set-voice-enabled",
+  MEDIA_TEST_SPEECH: "media:test-speech",
+  MEDIA_REFRESH: "media:refresh",
   TIKTOK_CONNECT: "tiktok:connect",
   TIKTOK_DISCONNECT: "tiktok:disconnect",
   LIVE_MANAGER_OPEN: "live-manager:open",
@@ -51,6 +58,9 @@ export const IPC = {
   KHEPREE_OPEN_BILLING: "khepree:open-billing",
   KHEPREE_REFRESH_OFFERS: "khepree:refresh-offers",
   KHEPREE_CHECKOUT: "khepree:checkout",
+  SESSION_LIST: "session:list",
+  SESSION_APPROVALS: "session:approvals",
+  SESSION_TOTALS: "session:totals",
   SETTINGS_SET_LOCALE: "settings:set-locale",
   SETTINGS_SET_ONBOARDING: "settings:set-onboarding"
 } as const;
@@ -71,6 +81,7 @@ export interface AppSnapshot {
   tiktok: TikTokPublicState;
   liveManager: LiveManagerPublicState;
   comments: CommentFeedSnapshot;
+  media: MediaPublicState;
 }
 
 export interface RendererApi {
@@ -82,6 +93,7 @@ export interface RendererApi {
   cancelApprovalAuto(id: string): Promise<void>;
   cancelNearestApprovalAuto(): Promise<void>;
   stopApprovalAutomation(): Promise<void>;
+  emergencyStop(): Promise<number>;
   connectTikTok(uniqueId: string): Promise<TikTokPublicState>;
   disconnectTikTok(): Promise<TikTokPublicState>;
   openLiveManager(): Promise<LiveManagerPublicState>;
@@ -114,4 +126,11 @@ export interface RendererApi {
   testGemini(prompt?: string): Promise<GeminiTestResult>;
   saveGeminiSession(secure1PSID: string, secure1PSIDTS?: string): Promise<GeminiPublicState>;
   clearGeminiSession(): Promise<GeminiPublicState>;
+  setMediaVoice(voice: string | undefined): Promise<MediaPublicState>;
+  setMediaVoiceEnabled(enabled: boolean): Promise<MediaPublicState>;
+  testMediaSpeech(text?: string): Promise<void>;
+  refreshMedia(): Promise<MediaPublicState>;
+  listSessions(limit?: number): Promise<LiveSessionSummary[]>;
+  listSessionApprovals(sessionId: string, limit?: number): Promise<ApprovalItem[]>;
+  getSessionTotals(): Promise<SessionTotals>;
 }

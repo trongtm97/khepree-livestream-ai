@@ -74,11 +74,11 @@ export const NAV_ITEMS: NavItem[] = [
     comingSoon: false
   },
   {
-    id: "logs",
+    id: "history",
     icon: ScrollText,
-    labelKey: "nav.logs",
-    headerKey: "header.logs",
-    comingSoon: true
+    labelKey: "nav.history",
+    headerKey: "header.history",
+    comingSoon: false
   },
   {
     id: "settings",

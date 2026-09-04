@@ -51,6 +51,8 @@ export const ERROR_CODES = {
   // Media / TTS / camera
   MEDIA_NOT_READY: "MEDIA_NOT_READY",
   TTS_UNAVAILABLE: "TTS_UNAVAILABLE",
+  MEDIA_VOICE_MUTED: "MEDIA_VOICE_MUTED",
+  TTS_TIMEOUT: "TTS_TIMEOUT",
   VIRTUAL_CAMERA_UNAVAILABLE: "VIRTUAL_CAMERA_UNAVAILABLE",
 
   // Python worker
@@ -331,6 +333,16 @@ export const ERROR_META: Record<string, ErrorCatalogMeta> = {
     code: ERROR_CODES.APPROVAL_NOT_PENDING,
     group: "system",
     severity: "info"
+  },
+  [ERROR_CODES.MEDIA_VOICE_MUTED]: {
+    code: ERROR_CODES.MEDIA_VOICE_MUTED,
+    group: "media",
+    severity: "info"
+  },
+  [ERROR_CODES.TTS_TIMEOUT]: {
+    code: ERROR_CODES.TTS_TIMEOUT,
+    group: "media",
+    severity: "warning"
   },
   [ERROR_CODES.TITLE_REQUIRED]: {
     code: ERROR_CODES.TITLE_REQUIRED,

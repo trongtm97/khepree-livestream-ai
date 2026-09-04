@@ -16,6 +16,7 @@ const api: RendererApi = {
   cancelApprovalAuto: (id: string) => ipcRenderer.invoke(IPC.APPROVAL_CANCEL_AUTO, id),
   cancelNearestApprovalAuto: () => ipcRenderer.invoke(IPC.APPROVAL_CANCEL_NEAREST_AUTO),
   stopApprovalAutomation: () => ipcRenderer.invoke(IPC.APPROVAL_STOP_AUTOMATION),
+  emergencyStop: () => ipcRenderer.invoke(IPC.LIVE_EMERGENCY_STOP),
   connectTikTok: (uniqueId: string) =>
     ipcRenderer.invoke(IPC.TIKTOK_CONNECT, uniqueId),
   disconnectTikTok: () => ipcRenderer.invoke(IPC.TIKTOK_DISCONNECT),
@@ -54,7 +55,17 @@ const api: RendererApi = {
   testGemini: (prompt?: string) => ipcRenderer.invoke(IPC.GEMINI_TEST, prompt),
   saveGeminiSession: (secure1PSID: string, secure1PSIDTS?: string) =>
     ipcRenderer.invoke(IPC.GEMINI_SAVE_SESSION, secure1PSID, secure1PSIDTS),
-  clearGeminiSession: () => ipcRenderer.invoke(IPC.GEMINI_CLEAR_SESSION)
+  clearGeminiSession: () => ipcRenderer.invoke(IPC.GEMINI_CLEAR_SESSION),
+  setMediaVoice: (voice: string | undefined) =>
+    ipcRenderer.invoke(IPC.MEDIA_SET_VOICE, voice),
+  setMediaVoiceEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke(IPC.MEDIA_SET_VOICE_ENABLED, enabled),
+  testMediaSpeech: (text?: string) => ipcRenderer.invoke(IPC.MEDIA_TEST_SPEECH, text),
+  refreshMedia: () => ipcRenderer.invoke(IPC.MEDIA_REFRESH),
+  listSessions: (limit?: number) => ipcRenderer.invoke(IPC.SESSION_LIST, limit),
+  listSessionApprovals: (sessionId: string, limit?: number) =>
+    ipcRenderer.invoke(IPC.SESSION_APPROVALS, sessionId, limit),
+  getSessionTotals: () => ipcRenderer.invoke(IPC.SESSION_TOTALS)
 };
 
 contextBridge.exposeInMainWorld("khepreeLivestreamAI", api);
