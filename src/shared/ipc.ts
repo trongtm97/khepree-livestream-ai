@@ -1,4 +1,11 @@
-import type { ApprovalItem, AutomationMode, ProductDNA, RuntimeHealth } from "./live-types";
+import type {
+  AccountLiveSnapshot,
+  ApprovalItem,
+  AutomationMode,
+  ProductDNA,
+  RuntimeHealth,
+  TikTokAccount
+} from "./live-types";
 import type {
   GeminiProbeResult,
   GeminiPublicState,
@@ -17,6 +24,8 @@ export const IPC = {
   LIVE_START: "live:start",
   LIVE_STOP: "live:stop",
   LIVE_SET_MODE: "live:set-mode",
+  LIVE_ACCOUNT_SNAPSHOT: "live:account-snapshot",
+  LIVE_MULTI_SNAPSHOT: "live:multi-snapshot",
   APPROVAL_RESOLVE: "approval:resolve",
   APPROVAL_CANCEL_AUTO: "approval:cancel-auto",
   APPROVAL_CANCEL_NEAREST_AUTO: "approval:cancel-nearest-auto",
@@ -45,6 +54,11 @@ export const IPC = {
   PRODUCT_SAVE: "product:save",
   PRODUCT_DELETE: "product:delete",
   PRODUCT_SELECT: "product:select",
+  PRODUCT_SET_CURRENT: "product:set-current",
+  ACCOUNT_FOCUS: "account:focus",
+  ACCOUNT_CREATE: "account:create",
+  ACCOUNT_UPDATE: "account:update",
+  ACCOUNT_DELETE: "account:delete",
   KHEPREE_LOGIN: "khepree:login",
   KHEPREE_LOGOUT: "khepree:logout",
   KHEPREE_OPEN_PRODUCT: "khepree:open-product",
@@ -55,16 +69,30 @@ export const IPC = {
   SETTINGS_SET_ONBOARDING: "settings:set-onboarding"
 } as const;
 
+/** Public multi-live overview — no runtimes, cookies, or BrowserContext. */
+export interface MultiLiveSnapshot {
+  lives: AccountLiveSnapshot[];
+  focusedAccountId?: string;
+  activeCount: number;
+}
+
 export interface AppSnapshot {
   appVersion: string;
   locale: AppLocale;
   onboarding: OnboardingState;
+  /** @deprecated Prefer `lives` / getAccountSnapshot */
   liveRunning: boolean;
+  /** @deprecated Prefer `lives` */
   automationMode: AutomationMode;
+  /** @deprecated Prefer `lives` */
   liveState: string;
+  /** @deprecated Prefer per-account approvals */
   approvals: ApprovalItem[];
   products: ProductDNA[];
+  /** @deprecated Prefer getAccountSnapshot(accountId).currentProductId */
   currentProductId?: string;
+  lives: AccountLiveSnapshot[];
+  focusedAccountId?: string;
   health: RuntimeHealth[];
   khepree: KhepreePublicState;
   gemini: GeminiPublicState;
@@ -73,27 +101,61 @@ export interface AppSnapshot {
   comments: CommentFeedSnapshot;
 }
 
+/**
+ * Typed preload bridge. Every protected live action requires accountId.
+ * Main validates accountId — never trust the renderer alone.
+ */
 export interface RendererApi {
   snapshot(): Promise<AppSnapshot>;
-  startLive(): Promise<void>;
-  stopLive(): Promise<void>;
-  setAutomationMode(mode: AutomationMode): Promise<void>;
-  resolveApproval(id: string, decision: "approve" | "reject", editedSpeech?: string): Promise<void>;
-  cancelApprovalAuto(id: string): Promise<void>;
-  cancelNearestApprovalAuto(): Promise<void>;
-  stopApprovalAutomation(): Promise<void>;
-  connectTikTok(uniqueId: string): Promise<TikTokPublicState>;
-  disconnectTikTok(): Promise<TikTokPublicState>;
-  openLiveManager(): Promise<LiveManagerPublicState>;
-  closeLiveManager(): Promise<LiveManagerPublicState>;
-  refreshLiveManager(): Promise<LiveManagerPublicState>;
-  captureLiveManagerDiagnostic(): Promise<LiveManagerPublicState>;
+  getAccountSnapshot(accountId: string): Promise<AccountLiveSnapshot>;
+  getMultiLiveSnapshot(): Promise<MultiLiveSnapshot>;
+
+  startLive(accountId: string): Promise<void>;
+  stopLive(accountId: string): Promise<void>;
+  setAutomationMode(accountId: string, mode: AutomationMode): Promise<void>;
+
+  resolveApproval(
+    accountId: string,
+    approvalId: string,
+    decision: "approve" | "reject",
+    editedSpeech?: string
+  ): Promise<void>;
+  cancelApprovalAuto(accountId: string, approvalId: string): Promise<void>;
+  cancelNearestApprovalAuto(accountId: string): Promise<void>;
+  stopApprovalAutomation(accountId: string): Promise<void>;
+
+  /** Connect using the account's stored username (validated in main). */
+  connectTikTok(accountId: string): Promise<TikTokPublicState>;
+  disconnectTikTok(accountId: string): Promise<TikTokPublicState>;
+
+  openLiveManager(accountId: string): Promise<LiveManagerPublicState>;
+  closeLiveManager(accountId: string): Promise<LiveManagerPublicState>;
+  refreshLiveManager(accountId: string): Promise<LiveManagerPublicState>;
+  captureLiveManagerDiagnostic(accountId: string): Promise<LiveManagerPublicState>;
+
   pinComment(eventId: string): Promise<void>;
   markCommentReplied(eventId: string): Promise<void>;
   skipComment(eventId: string): Promise<void>;
+
+  /** Catalog save — does not bind current product unless setCurrentProduct is called. */
   saveProduct(product: ProductDNA): Promise<void>;
   deleteProduct(id: string): Promise<void>;
-  selectProduct(id: string | null): Promise<void>;
+  setCurrentProduct(accountId: string, productId: string | null): Promise<void>;
+  /** @deprecated Prefer setCurrentProduct */
+  selectProduct(accountId: string, id: string | null): Promise<void>;
+
+  setFocusedAccount(accountId: string | null): Promise<string | undefined>;
+  createTikTokAccount(input: {
+    username: string;
+    displayName?: string;
+    label?: string;
+  }): Promise<TikTokAccount>;
+  updateTikTokAccount(
+    accountId: string,
+    patch: { username?: string; displayName?: string; label?: string; enabled?: boolean }
+  ): Promise<TikTokAccount>;
+  deleteTikTokAccount(accountId: string): Promise<void>;
+
   startKhepreeLogin(): Promise<void>;
   logoutKhepree(): Promise<void>;
   openKhepreeProductPage(): Promise<void>;

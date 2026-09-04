@@ -134,6 +134,7 @@ export class LiveMemory {
     return {
       sessionId: this.sessionId,
       recentSpeech: [...this.recentSpeech],
+      recentComments: [...this.recentComments],
       recentRespondedComments: [...this.recentRespondedComments],
       recentCta: [...this.recentCta],
       currentProductId: this.currentProductId,

@@ -31,6 +31,7 @@ export type MemoryComment = {
 export type LiveMemoryPublicSnapshot = {
   sessionId?: string;
   recentSpeech: string[];
+  recentComments: MemoryComment[];
   recentRespondedComments: MemoryComment[];
   recentCta: string[];
   currentProductId?: string;

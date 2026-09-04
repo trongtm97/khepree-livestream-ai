@@ -1,35 +1,80 @@
 import { app, ipcMain } from "electron";
-import { IPC, type AppSnapshot } from "../../shared/ipc";
+import { IPC, type AppSnapshot, type MultiLiveSnapshot } from "../../shared/ipc";
 import type { LlmProviderId } from "../../shared/gemini-contracts";
 import { normalizeAppLocale, type AppLocale } from "../../shared/locale";
 import type { OnboardingState } from "../../shared/onboarding";
-import type { AutomationMode, ProductDNA } from "../../shared/live-types";
+import type { AccountLiveSnapshot, AutomationMode, ProductDNA } from "../../shared/live-types";
+import { DEFAULT_ACCOUNT_AUTOMATION_MODE } from "../../shared/tiktok-account";
 import { normalizeProduct, validateProduct } from "../../shared/product-dna";
 import { AppContainer } from "../app-container";
+import { requireValidAccountId } from "./account-id";
+
+function legacyFocusedPane(container: AppContainer) {
+  const focusedId = container.multiLive.focusedId;
+  const snap = focusedId
+    ? container.multiLive.getSnapshot(focusedId)
+    : undefined;
+  const runtime = focusedId ? container.multiLive.getRuntime(focusedId) : undefined;
+  return {
+    liveRunning: snap?.isRunning ?? false,
+    automationMode: snap?.automationMode ?? DEFAULT_ACCOUNT_AUTOMATION_MODE,
+    liveState: snap?.state ?? "IDLE",
+    approvals: runtime?.listApprovals() ?? [],
+    currentProductId: snap?.currentProductId
+  };
+}
+
+function accountId(container: AppContainer, raw: unknown): string {
+  return requireValidAccountId(raw, container.tiktokAccounts);
+}
+
+/** Bind connector routing focus after validating accountId. */
+function focusAccount(container: AppContainer, id: string): void {
+  container.multiLive.setFocusedAccountId(id);
+  container.settings.setFocusedAccountId(id);
+}
 
 export function registerIpc(container: AppContainer): void {
-  ipcMain.handle(IPC.APP_SNAPSHOT, async (): Promise<AppSnapshot> => ({
-    appVersion: app.getVersion(),
-    locale: container.settings.getLocale(),
-    onboarding: container.settings.getOnboarding(),
-    liveRunning: container.live.isRunning,
-    automationMode: container.live.automationMode,
-    liveState: container.live.state,
-    approvals: container.live.listApprovals(),
-    products: container.products.list(),
-    currentProductId: container.currentProductId,
-    health: [
-      await container.llm.health(),
-      await container.tiktok.health(),
-      await container.liveManager.health(),
-      await container.media.health()
-    ],
-    khepree: container.khepree.publicState,
-    gemini: await container.llm.getPublicState(),
-    tiktok: container.tiktok.getPublicState(),
-    liveManager: container.liveManager.getPublicState(),
-    comments: container.comments.getSnapshot()
-  }));
+  ipcMain.handle(IPC.APP_SNAPSHOT, async (): Promise<AppSnapshot> => {
+    const pane = legacyFocusedPane(container);
+    return {
+      appVersion: app.getVersion(),
+      locale: container.settings.getLocale(),
+      onboarding: container.settings.getOnboarding(),
+      ...pane,
+      lives: container.multiLive.getAllSnapshots(),
+      focusedAccountId: container.multiLive.focusedId,
+      products: container.products.list(),
+      health: [
+        await container.llm.health(),
+        await container.tiktok.health(),
+        await container.liveManager.health(),
+        await container.media.health()
+      ],
+      khepree: container.khepree.publicState,
+      gemini: await container.llm.getPublicState(),
+      tiktok: container.tiktok.getPublicState(),
+      liveManager: container.liveManager.getPublicState(),
+      comments: container.comments.getSnapshot()
+    };
+  });
+
+  ipcMain.handle(
+    IPC.LIVE_ACCOUNT_SNAPSHOT,
+    async (_event, rawAccountId: unknown): Promise<AccountLiveSnapshot> => {
+      const id = accountId(container, rawAccountId);
+      return container.multiLive.getSnapshot(id);
+    }
+  );
+
+  ipcMain.handle(IPC.LIVE_MULTI_SNAPSHOT, async (): Promise<MultiLiveSnapshot> => {
+    const lives = container.multiLive.getAllSnapshots();
+    return {
+      lives,
+      focusedAccountId: container.multiLive.focusedId,
+      activeCount: lives.filter((l) => l.isRunning).length
+    };
+  });
 
   ipcMain.handle(IPC.SETTINGS_SET_LOCALE, async (_event, locale: AppLocale) => {
     const next = normalizeAppLocale(locale);
@@ -41,38 +86,64 @@ export function registerIpc(container: AppContainer): void {
     return container.settings.setOnboarding(state);
   });
 
-  ipcMain.handle(IPC.LIVE_START, async () => {
-    container.khepree.assertProductAccess();
-    container.live.start();
+  ipcMain.handle(IPC.LIVE_START, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    focusAccount(container, id);
+    container.multiLive.startLive(id);
   });
 
-  ipcMain.handle(IPC.LIVE_STOP, async () => {
-    container.live.stop();
-  });
-
-  ipcMain.handle(IPC.LIVE_SET_MODE, async (_event, mode: AutomationMode) => {
-    container.khepree.assertProductAccess();
-    if (mode === "FULL_AUTO") container.khepree.assertProductAccess("full_auto");
-    container.live.setMode(mode);
+  ipcMain.handle(IPC.LIVE_STOP, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    container.multiLive.stopLive(id);
   });
 
   ipcMain.handle(
-    IPC.APPROVAL_RESOLVE,
-    async (_event, id: string, decision: "approve" | "reject", editedSpeech?: string) => {
-      await container.live.resolveApproval(id, decision, editedSpeech);
+    IPC.LIVE_SET_MODE,
+    async (_event, rawAccountId: unknown, mode: AutomationMode) => {
+      container.khepree.assertProductAccess();
+      if (mode === "FULL_AUTO") container.khepree.assertProductAccess("full_auto");
+      const id = accountId(container, rawAccountId);
+      container.multiLive.setAutomationMode(id, mode);
     }
   );
 
-  ipcMain.handle(IPC.APPROVAL_CANCEL_AUTO, async (_event, id: string) => {
-    container.live.cancelAutoApproval(String(id ?? ""));
-  });
+  ipcMain.handle(
+    IPC.APPROVAL_RESOLVE,
+    async (
+      _event,
+      rawAccountId: unknown,
+      approvalId: unknown,
+      decision: "approve" | "reject",
+      editedSpeech?: string
+    ) => {
+      const id = accountId(container, rawAccountId);
+      const aid = String(approvalId ?? "").trim();
+      if (!aid) throw new Error("APPROVAL_ID_REQUIRED");
+      await container.multiLive.resolveApproval(id, aid, decision, editedSpeech);
+    }
+  );
 
-  ipcMain.handle(IPC.APPROVAL_CANCEL_NEAREST_AUTO, async () => {
-    container.live.cancelNearestAutoApproval();
-  });
+  ipcMain.handle(
+    IPC.APPROVAL_CANCEL_AUTO,
+    async (_event, rawAccountId: unknown, approvalId: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const aid = String(approvalId ?? "").trim();
+      if (!aid) throw new Error("APPROVAL_ID_REQUIRED");
+      container.multiLive.cancelAutoApproval(id, aid);
+    }
+  );
 
-  ipcMain.handle(IPC.APPROVAL_STOP_AUTOMATION, async () => {
-    container.live.stopAutomation();
+  ipcMain.handle(
+    IPC.APPROVAL_CANCEL_NEAREST_AUTO,
+    async (_event, rawAccountId: unknown) => {
+      const id = accountId(container, rawAccountId);
+      container.multiLive.cancelNearestAutoApproval(id);
+    }
+  );
+
+  ipcMain.handle(IPC.APPROVAL_STOP_AUTOMATION, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    container.multiLive.stopAutomation(id);
   });
 
   ipcMain.handle(IPC.PRODUCT_SAVE, async (_event, product: ProductDNA) => {
@@ -87,26 +158,114 @@ export function registerIpc(container: AppContainer): void {
       throw new Error(code);
     }
     container.products.save(normalized);
-    container.setCurrentProductId(normalized.id);
   });
 
-  ipcMain.handle(IPC.PRODUCT_DELETE, async (_event, id: string) => {
+  ipcMain.handle(IPC.PRODUCT_DELETE, async (_event, productId: unknown) => {
     container.khepree.assertProductAccess();
-    if (!id?.trim()) throw new Error("PRODUCT_ID_REQUIRED");
+    const id = String(productId ?? "").trim();
+    if (!id) throw new Error("PRODUCT_ID_REQUIRED");
     const deleted = container.products.delete(id);
     if (!deleted) throw new Error("PRODUCT_NOT_FOUND");
-    if (container.settings.getCurrentProductId() === id) {
-      container.setCurrentProductId(container.products.list()[0]?.id);
+    // Clear current product on any account that pointed at it
+    for (const snap of container.multiLive.getAllSnapshots()) {
+      if (snap.currentProductId === id) {
+        container.multiLive.setCurrentProduct(snap.accountId, undefined);
+      }
     }
   });
 
-  ipcMain.handle(IPC.PRODUCT_SELECT, async (_event, id: string | null) => {
-    container.khepree.assertProductAccess();
-    if (!id) {
-      container.setCurrentProductId(undefined);
-      return;
+  ipcMain.handle(
+    IPC.PRODUCT_SET_CURRENT,
+    async (_event, rawAccountId: unknown, productId: unknown) => {
+      container.khepree.assertProductAccess();
+      const id = accountId(container, rawAccountId);
+      const pid =
+        productId === null || productId === undefined || productId === ""
+          ? undefined
+          : String(productId);
+      container.multiLive.setCurrentProduct(id, pid);
     }
-    container.setCurrentProductId(id);
+  );
+
+  ipcMain.handle(
+    IPC.PRODUCT_SELECT,
+    async (_event, rawAccountId: unknown, productId: unknown) => {
+      container.khepree.assertProductAccess();
+      const id = accountId(container, rawAccountId);
+      const pid =
+        productId === null || productId === undefined || productId === ""
+          ? undefined
+          : String(productId);
+      container.multiLive.setCurrentProduct(id, pid);
+    }
+  );
+
+  ipcMain.handle(IPC.ACCOUNT_FOCUS, async (_event, rawAccountId: unknown) => {
+    if (rawAccountId === null || rawAccountId === undefined || rawAccountId === "") {
+      container.multiLive.setFocusedAccountId(undefined);
+      container.settings.setFocusedAccountId(undefined);
+      return undefined;
+    }
+    const id = accountId(container, rawAccountId);
+    focusAccount(container, id);
+    return id;
+  });
+
+  ipcMain.handle(
+    IPC.ACCOUNT_CREATE,
+    async (
+      _event,
+      input: { username?: string; displayName?: string; label?: string }
+    ) => {
+      container.khepree.assertProductAccess();
+      const username = String(input?.username ?? "").trim();
+      if (!username) throw new Error("TIKTOK_USERNAME_REQUIRED");
+      const created = container.tiktokAccounts.create({
+        username,
+        displayName: input.displayName,
+        label: input.label
+      });
+      container.accountLiveSettings.ensure(created.id);
+      if (!container.multiLive.focusedId) {
+        focusAccount(container, created.id);
+      }
+      return created;
+    }
+  );
+
+  ipcMain.handle(
+    IPC.ACCOUNT_UPDATE,
+    async (
+      _event,
+      rawAccountId: unknown,
+      patch: {
+        username?: string;
+        displayName?: string;
+        label?: string;
+        enabled?: boolean;
+      }
+    ) => {
+      container.khepree.assertProductAccess();
+      const id = accountId(container, rawAccountId);
+      return container.tiktokAccounts.update(id, {
+        username: patch?.username,
+        displayName: patch?.displayName,
+        label: patch?.label,
+        enabled: patch?.enabled
+      });
+    }
+  );
+
+  ipcMain.handle(IPC.ACCOUNT_DELETE, async (_event, rawAccountId: unknown) => {
+    container.khepree.assertProductAccess();
+    const id = accountId(container, rawAccountId);
+    container.tiktokAccounts.delete(id);
+    container.multiLive.disposeAccount(id);
+    if (container.settings.getFocusedAccountId() === id) {
+      const next = container.tiktokAccounts.list()[0]?.id;
+      container.multiLive.setFocusedAccountId(next);
+      container.settings.setFocusedAccountId(next);
+    }
   });
 
   ipcMain.handle(IPC.GEMINI_HEALTH, async () => container.llm.getPublicState());
@@ -180,28 +339,43 @@ export function registerIpc(container: AppContainer): void {
     }
   );
 
-  ipcMain.handle(IPC.TIKTOK_CONNECT, async (_event, uniqueId: string) => {
-    return container.tiktok.connect(String(uniqueId ?? ""));
+  ipcMain.handle(IPC.TIKTOK_CONNECT, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    focusAccount(container, id);
+    const account = container.tiktokAccounts.get(id)!;
+    container.settings.setTikTokUniqueId(account.username);
+    const state = await container.tiktok.connect(account.username);
+    container.tiktokAccounts.update(id, {
+      lastConnectedAt: new Date().toISOString()
+    });
+    return state;
   });
 
-  ipcMain.handle(IPC.TIKTOK_DISCONNECT, async () => {
+  ipcMain.handle(IPC.TIKTOK_DISCONNECT, async (_event, rawAccountId: unknown) => {
+    accountId(container, rawAccountId);
     return container.tiktok.disconnect();
   });
 
-  ipcMain.handle(IPC.LIVE_MANAGER_OPEN, async () => {
+  ipcMain.handle(IPC.LIVE_MANAGER_OPEN, async (_event, rawAccountId: unknown) => {
     container.khepree.assertProductAccess();
-    return container.liveManager.open();
+    const id = accountId(container, rawAccountId);
+    focusAccount(container, id);
+    const account = container.tiktokAccounts.get(id)!;
+    return container.liveManager.open(account.profileKey);
   });
 
-  ipcMain.handle(IPC.LIVE_MANAGER_CLOSE, async () => {
+  ipcMain.handle(IPC.LIVE_MANAGER_CLOSE, async (_event, rawAccountId: unknown) => {
+    accountId(container, rawAccountId);
     return container.liveManager.close();
   });
 
-  ipcMain.handle(IPC.LIVE_MANAGER_REFRESH, async () => {
+  ipcMain.handle(IPC.LIVE_MANAGER_REFRESH, async (_event, rawAccountId: unknown) => {
+    accountId(container, rawAccountId);
     return container.liveManager.refresh();
   });
 
-  ipcMain.handle(IPC.LIVE_MANAGER_DIAGNOSTIC, async () => {
+  ipcMain.handle(IPC.LIVE_MANAGER_DIAGNOSTIC, async (_event, rawAccountId: unknown) => {
+    accountId(container, rawAccountId);
     return container.liveManager.captureDiagnostic();
   });
 

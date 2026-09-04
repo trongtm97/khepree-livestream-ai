@@ -358,6 +358,10 @@ if (/\.speak|media\.|llm\./i.test(liveManagerMgr)) {
   console.error("LiveManagerManager must not call LLM/media/voice");
   failed = true;
 }
+if (!liveManagerMgr.includes("async open(profileKey") || !liveManagerMgr.includes("boundProfileKey")) {
+  console.error("LiveManagerManager.open must take profileKey");
+  failed = true;
+}
 
 const liveTypesSrc = fs.readFileSync(path.join(root, "src/shared/live-types.ts"), "utf8");
 for (const needle of ["VIOLATION", "PRODUCT_ACTIVITY", "paymentConfirmed", "fingerprint?"]) {
@@ -535,6 +539,171 @@ const sessionsRepo = fs.readFileSync(path.join(root, "src/main/db/repositories.t
 if (!sessionsRepo.includes("class LiveSessionRepository") || !sessionsRepo.includes("startWithId")) {
   console.error("LiveSessionRepository with startWithId required");
   failed = true;
+}
+if (
+  !sessionsRepo.includes("class TikTokAccountRepository") ||
+  !sessionsRepo.includes("class AccountLiveSettingsRepository")
+) {
+  console.error("Multi-live account repositories required");
+  failed = true;
+}
+
+const connectionSrc = fs.readFileSync(path.join(root, "src/main/db/connection.ts"), "utf8");
+for (const needle of [
+  "CURRENT_SCHEMA_VERSION",
+  "migrateV2MultiLive",
+  "tiktok_accounts",
+  "account_live_settings",
+  "schema.version"
+]) {
+  if (!connectionSrc.includes(needle)) {
+    console.error("connection.ts multi-live migration missing:", needle);
+    failed = true;
+  }
+}
+
+for (const file of [
+  "src/shared/tiktok-account.ts",
+  "src/main/db/multi-live-self-check.ts",
+  "src/main/live/live-runtime.ts",
+  "src/main/live/live-runtime-self-check.ts",
+  "src/main/live/multi-live-runtime-manager.ts",
+  "src/main/live/multi-live-manager-self-check.ts",
+  "docs/MULTI_LIVE_ARCHITECTURE.md"
+]) {
+  if (!fs.existsSync(path.join(root, file))) {
+    console.error("MISSING", file);
+    failed = true;
+  }
+}
+
+const liveRuntimeSrc = fs.readFileSync(path.join(root, "src/main/live/live-runtime.ts"), "utf8");
+for (const needle of [
+  "class LiveRuntime",
+  "publishEvent",
+  "EVENT_ACCOUNT_MISMATCH",
+  "setCurrentProduct",
+  "setAutomationMode",
+  "APPROVAL_SESSION_REQUIRED"
+]) {
+  if (!liveRuntimeSrc.includes(needle)) {
+    console.error("live-runtime missing:", needle);
+    failed = true;
+  }
+}
+
+const multiLiveMgr = fs.readFileSync(
+  path.join(root, "src/main/live/multi-live-runtime-manager.ts"),
+  "utf8"
+);
+for (const needle of [
+  "class MultiLiveRuntimeManager",
+  "Map<",
+  "startLive",
+  "stopLive",
+  "stopAll",
+  "CONCURRENCY_LIMIT",
+  "ACCOUNT_ID_REQUIRED",
+  "getAllSnapshots"
+]) {
+  if (!multiLiveMgr.includes(needle)) {
+    console.error("multi-live-runtime-manager missing:", needle);
+    failed = true;
+  }
+}
+
+const appContainerLive = fs.readFileSync(path.join(root, "src/main/app-container.ts"), "utf8");
+if (!appContainerLive.includes("MultiLiveRuntimeManager") || !appContainerLive.includes("multiLive")) {
+  console.error("AppContainer must host MultiLiveRuntimeManager");
+  failed = true;
+}
+if (/readonly live:/.test(appContainerLive)) {
+  console.error("AppContainer must not keep readonly live singleton");
+  failed = true;
+}
+if (/get currentProductId\(/.test(appContainerLive) && appContainerLive.includes("settings.getCurrentProductId")) {
+  console.error("AppContainer must not own global currentProductId");
+  failed = true;
+}
+
+const ipcSnap = fs.readFileSync(path.join(root, "src/shared/ipc.ts"), "utf8");
+if (!ipcSnap.includes("lives: AccountLiveSnapshot[]") && !ipcSnap.includes("lives:")) {
+  console.error("AppSnapshot must include lives[]");
+  failed = true;
+}
+for (const needle of [
+  "getAccountSnapshot(accountId: string)",
+  "getMultiLiveSnapshot()",
+  "startLive(accountId: string)",
+  "stopLive(accountId: string)",
+  "setAutomationMode(accountId: string, mode: AutomationMode)",
+  "resolveApproval(",
+  "connectTikTok(accountId: string)",
+  "setCurrentProduct(accountId: string",
+  "interface MultiLiveSnapshot",
+  "setFocusedAccount(",
+  "createTikTokAccount(",
+  "updateTikTokAccount(",
+  "deleteTikTokAccount(",
+  "ACCOUNT_FOCUS",
+  "ACCOUNT_CREATE",
+  "ACCOUNT_UPDATE",
+  "ACCOUNT_DELETE"
+]) {
+  if (!ipcSnap.includes(needle)) {
+    console.error("ipc.ts account-aware API missing:", needle);
+    failed = true;
+  }
+}
+
+const registerIpcAware = fs.readFileSync(path.join(root, "src/main/ipc/register.ts"), "utf8");
+if (!registerIpcAware.includes("requireValidAccountId")) {
+  console.error("register.ts must validate accountId via requireValidAccountId");
+  failed = true;
+}
+if (registerIpcAware.includes("resolveLiveAccountId")) {
+  console.error("register.ts must not use legacy omit-accountId shim");
+  failed = true;
+}
+if (!registerIpcAware.includes("account.profileKey")) {
+  console.error("LIVE_MANAGER_OPEN must pass account.profileKey");
+  failed = true;
+}
+
+if (!liveManagerSrc.includes("browser-profiles") || !liveManagerSrc.includes("profileKey")) {
+  console.error("LiveManagerObserver must bind browser-profiles/<profileKey>");
+  failed = true;
+}
+
+for (const file of [
+  "src/main/ipc/account-id.ts",
+  "src/main/ipc/account-aware-ipc-self-check.ts",
+  "src/renderer/components/connections/TikTokAccountsPanel.tsx"
+]) {
+  if (!fs.existsSync(path.join(root, file))) {
+    console.error("MISSING", file);
+    failed = true;
+  }
+}
+
+const liveTypesSnap = fs.readFileSync(path.join(root, "src/shared/live-types.ts"), "utf8");
+if (!liveTypesSnap.includes("interface AccountLiveSnapshot")) {
+  console.error("AccountLiveSnapshot type required");
+  failed = true;
+}
+
+const liveTypesMulti = fs.readFileSync(path.join(root, "src/shared/live-types.ts"), "utf8");
+for (const needle of [
+  "interface TikTokAccount",
+  "interface AccountLiveSettings",
+  "interface LiveSession",
+  "accountId: string",
+  "UNASSIGNED_ACCOUNT_ID"
+]) {
+  if (!liveTypesMulti.includes(needle)) {
+    console.error("live-types multi-live field missing:", needle);
+    failed = true;
+  }
 }
 
 const approvalEngine = fs.readFileSync(path.join(root, "src/main/live/approval-engine.ts"), "utf8");

@@ -1,5 +1,6 @@
 import type { LiveEventBus } from "../../core/event-bus";
 import type { LiveEvent } from "../../../shared/live-types";
+import { UNASSIGNED_ACCOUNT_ID } from "../../../shared/live-types";
 import type {
   TikTokConnectionPhase,
   TikTokPublicState
@@ -174,9 +175,14 @@ export class TikTokConnectorManager {
           this.commentTimestamps.push(Date.now());
           this.trimCommentWindow();
         }
+        // Stamp account provenance (real accountId wiring lands in later multi-live tasks).
+        const stamped: LiveEvent = {
+          ...event,
+          accountId: event.accountId || UNASSIGNED_ACCOUNT_ID
+        };
         // Strict rule: worker events only enter the app via Event Bus.
-        this.opts.eventBus.publish(event);
-        this.opts.onEvent?.(event);
+        this.opts.eventBus.publish(stamped);
+        this.opts.onEvent?.(stamped);
 
         if (event.type === "DISCONNECT" && this.wantConnected) {
           this.phase = "RECONNECTING";

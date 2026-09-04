@@ -6,7 +6,9 @@ import {
   LiveEventRepository,
   LiveSessionRepository,
   ProductRepository,
-  SettingsRepository
+  SettingsRepository,
+  TikTokAccountRepository,
+  AccountLiveSettingsRepository
 } from "./db/repositories";
 import { LiveEventBus } from "./core/event-bus";
 import {
@@ -23,7 +25,7 @@ import {
 } from "./connectors/tiktok/live-manager-manager";
 import { MockMediaProvider } from "./connectors/media/mock-media-provider";
 import { CommentFeedService } from "./live/comment-feed-service";
-import { LiveOrchestrator } from "./live/live-orchestrator";
+import { MultiLiveRuntimeManager } from "./live/multi-live-runtime-manager";
 import { KhepreeAccessService } from "./khepree/khepree-access-service";
 import { KhepreeHeartbeatService } from "./khepree/heartbeat-service";
 import { assertProductDnaHelpers } from "../shared/product-dna";
@@ -33,8 +35,13 @@ import { assertSalesBrainContract } from "../shared/sales-brain";
 import { assertLiveMemoryHelpers } from "../shared/live-memory";
 import { assertSalesScriptHelpers } from "../shared/sales-script";
 import { assertApprovalEngineContract } from "./live/approval-engine";
+import { assertTikTokAccountHelpers } from "../shared/tiktok-account";
 import { resolveAppRoot } from "./app-paths";
 
+/**
+ * Shared process services + MultiLiveRuntimeManager.
+ * No global LiveOrchestrator / currentProductId — live state lives per account runtime.
+ */
 export class AppContainer {
   readonly db: Database.Database;
   readonly settings: SettingsRepository;
@@ -42,6 +49,9 @@ export class AppContainer {
   readonly events: LiveEventRepository;
   readonly approvals: ApprovalRepository;
   readonly sessions: LiveSessionRepository;
+  readonly tiktokAccounts: TikTokAccountRepository;
+  readonly accountLiveSettings: AccountLiveSettingsRepository;
+  /** Fan-in bus for UI comment feed (events forwarded from each LiveRuntime). */
   readonly eventBus = new LiveEventBus();
   readonly khepree = new KhepreeAccessService();
   readonly heartbeat = new KhepreeHeartbeatService(this.khepree);
@@ -49,8 +59,9 @@ export class AppContainer {
   readonly tiktok: TikTokConnectorManager;
   readonly liveManager: LiveManagerManager;
   readonly comments: CommentFeedService;
+  /** Shared mock until per-runtime media sessions are fully specialized. */
   readonly media = new MockMediaProvider();
-  readonly live: LiveOrchestrator;
+  readonly multiLive: MultiLiveRuntimeManager;
 
   constructor() {
     this.db = openDatabase(app.getPath("userData"));
@@ -59,6 +70,15 @@ export class AppContainer {
     this.events = new LiveEventRepository(this.db);
     this.approvals = new ApprovalRepository(this.db);
     this.sessions = new LiveSessionRepository(this.db);
+    this.tiktokAccounts = new TikTokAccountRepository(this.db);
+    this.accountLiveSettings = new AccountLiveSettingsRepository(this.db);
+
+    seedLegacyTikTokAccountIfNeeded(
+      this.tiktokAccounts,
+      this.accountLiveSettings,
+      this.settings
+    );
+
     this.llm = new LlmProviderManager({
       appRoot: resolveAppRoot(),
       getPreferredProvider: () => this.settings.getLlmPreferredProvider(),
@@ -69,52 +89,62 @@ export class AppContainer {
       setSelectedModel: (m) => this.settings.setGeminiSelectedModel(m),
       getLocale: () => this.settings.getLocale()
     });
+
+    this.comments = new CommentFeedService({ eventBus: this.eventBus });
+
+    this.multiLive = new MultiLiveRuntimeManager({
+      accounts: this.tiktokAccounts,
+      accountLiveSettings: this.accountLiveSettings,
+      repositories: {
+        products: this.products,
+        events: this.events,
+        approvals: this.approvals,
+        sessions: this.sessions,
+        accountLiveSettings: this.accountLiveSettings
+      },
+      llm: this.llm,
+      createMedia: () => new MockMediaProvider(),
+      assertProductAccess: (feature) => this.khepree.assertProductAccess(feature),
+      onEvent: (event) => this.eventBus.publish(event),
+      onApprovalChanged: (item) => this.comments.applyApproval(item)
+    });
+
+    // Restore focused account (persisted); unpackaged may fall back to first account for UI.
+    const savedFocus = this.settings.getFocusedAccountId();
+    if (savedFocus && this.tiktokAccounts.get(savedFocus)) {
+      this.multiLive.setFocusedAccountId(savedFocus);
+    } else if (!app.isPackaged) {
+      const first = this.tiktokAccounts.list()[0];
+      if (first) {
+        this.multiLive.setFocusedAccountId(first.id);
+        this.settings.setFocusedAccountId(first.id);
+      }
+    }
+
+    const connectorSink = new LiveEventBus();
     this.tiktok = new TikTokConnectorManager({
       appRoot: resolveAppRoot(),
-      eventBus: this.eventBus,
-      onEvent: (event) => this.events.save(this.live.sessionId ?? null, event),
+      eventBus: connectorSink,
+      onEvent: (event) => {
+        const accountId = this.requireFocusedOrThrow();
+        this.multiLive.ensureRuntime(accountId).publishEvent({
+          ...event,
+          accountId
+        });
+      },
       getSavedUniqueId: () => this.settings.getTikTokUniqueId(),
       setSavedUniqueId: (id) => this.settings.setTikTokUniqueId(id)
     });
     this.liveManager = new LiveManagerManager({
-      eventBus: this.eventBus,
-      onEvent: (event) => this.events.save(this.live.sessionId ?? null, event)
-    });
-    this.comments = new CommentFeedService({ eventBus: this.eventBus });
-    this.live = new LiveOrchestrator({
-      eventBus: this.eventBus,
-      llm: this.llm,
-      media: this.media,
-      getCurrentProduct: () => this.resolveCurrentProduct(),
-      onApprovalChanged: (item) => {
-        this.approvals.save(this.live.sessionId ?? null, item);
-        this.comments.applyApproval(item);
-      },
-      onSessionStart: (sessionId, mode) => {
-        this.sessions.startWithId(sessionId, mode);
-      },
-      onSessionEnd: (sessionId, finalState) => {
-        this.sessions.end(sessionId, finalState);
+      eventBus: connectorSink,
+      onEvent: (event) => {
+        const accountId = this.requireFocusedOrThrow();
+        this.multiLive.ensureRuntime(accountId).publishEvent({
+          ...event,
+          accountId
+        });
       }
     });
-  }
-
-  get currentProductId(): string | undefined {
-    const stored = this.settings.getCurrentProductId();
-    if (stored && this.products.get(stored)) return stored;
-    return this.products.list()[0]?.id;
-  }
-
-  setCurrentProductId(id: string | undefined): void {
-    if (id && !this.products.get(id)) {
-      throw new Error("PRODUCT_NOT_FOUND");
-    }
-    this.settings.setCurrentProductId(id);
-  }
-
-  resolveCurrentProduct() {
-    const id = this.currentProductId;
-    return id ? this.products.get(id) : undefined;
   }
 
   async initialize(): Promise<void> {
@@ -129,8 +159,8 @@ export class AppContainer {
       assertLiveMemoryHelpers();
       assertApprovalEngineContract();
       assertSalesScriptHelpers();
+      assertTikTokAccountHelpers();
     }
-    // Packaged builds prefer real Gemini until the operator picks mock demo explicitly.
     if (app.isPackaged && this.settings.get("llm.preferredProvider") === undefined) {
       this.settings.setLlmPreferredProvider("gemini-web");
     }
@@ -140,12 +170,57 @@ export class AppContainer {
   }
 
   dispose(): void {
-    this.live.stop();
+    this.multiLive.dispose();
     this.comments.stop();
     this.heartbeat.stop();
     void this.llm.dispose();
     void this.tiktok.dispose();
     void this.liveManager.dispose();
     this.db.close();
+  }
+
+  private requireFocusedOrThrow(): string {
+    const id = this.multiLive.focusedId;
+    if (!id) throw new Error("ACCOUNT_ID_REQUIRED");
+    return id;
+  }
+}
+
+/**
+ * Migrate legacy tiktok.uniqueId / products.currentId into tiktok_accounts once.
+ * Does not set focused account in production and does not start live.
+ */
+export function seedLegacyTikTokAccountIfNeeded(
+  accounts: TikTokAccountRepository,
+  accountSettings: AccountLiveSettingsRepository,
+  appSettings: SettingsRepository
+): void {
+  if (accounts.list().length > 0) {
+    const existing = accounts.list()[0]!;
+    const settings = accountSettings.ensure(existing.id);
+    const legacyProduct = appSettings.getCurrentProductId();
+    if (!settings.currentProductId && legacyProduct) {
+      accountSettings.upsert({
+        accountId: existing.id,
+        currentProductId: legacyProduct
+      });
+    }
+    return;
+  }
+
+  const uniqueId = appSettings.getTikTokUniqueId();
+  if (!uniqueId) return;
+
+  const created = accounts.create({
+    username: uniqueId,
+    label: "Primary"
+  });
+  const legacyProduct = appSettings.getCurrentProductId();
+  accountSettings.ensure(created.id);
+  if (legacyProduct) {
+    accountSettings.upsert({
+      accountId: created.id,
+      currentProductId: legacyProduct
+    });
   }
 }

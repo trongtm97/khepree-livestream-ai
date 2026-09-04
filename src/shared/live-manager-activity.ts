@@ -1,4 +1,5 @@
 import type { LiveEvent, LiveEventType } from "./live-types";
+import { UNASSIGNED_ACCOUNT_ID } from "./live-types";
 
 export type LiveManagerActivityKind =
   | "COMMENT"
@@ -60,6 +61,9 @@ export type ActivityRowInput = {
   username?: string;
   sequence: number;
   timestamp?: string;
+  /** Multi-live provenance; defaults to unassigned until connector stamps a real account. */
+  accountId?: string;
+  sessionId?: string;
 };
 
 export function buildLiveManagerActivityEvent(input: ActivityRowInput): LiveEvent {
@@ -75,6 +79,8 @@ export function buildLiveManagerActivityEvent(input: ActivityRowInput): LiveEven
     type: input.kind as LiveEventType,
     source: "live-manager",
     timestamp: input.timestamp ?? new Date().toISOString(),
+    accountId: input.accountId ?? UNASSIGNED_ACCOUNT_ID,
+    sessionId: input.sessionId,
     text,
     username: input.username,
     fingerprint,

@@ -31,10 +31,12 @@ function riskLabelKey(tag: string): MessageKey {
 
 export function ApprovalCard({
   item,
-  comments
+  comments,
+  accountId
 }: {
   item: ApprovalItem;
   comments: CommentFeedItem[];
+  accountId: string;
 }) {
   const { t, run, refresh } = useAppShell();
   const [editing, setEditing] = useState(false);
@@ -83,32 +85,32 @@ export function ApprovalCard({
 
   const speakNow = () =>
     void run(async () => {
-      await window.khepreeLivestreamAI.resolveApproval(item.id, "approve");
+      await window.khepreeLivestreamAI.resolveApproval(accountId, item.id, "approve");
       await refresh();
     });
 
   const speakEdited = () =>
     void run(async () => {
-      await window.khepreeLivestreamAI.resolveApproval(item.id, "approve", draft);
+      await window.khepreeLivestreamAI.resolveApproval(accountId, item.id, "approve", draft);
       setEditing(false);
       await refresh();
     });
 
   const skip = () =>
     void run(async () => {
-      await window.khepreeLivestreamAI.resolveApproval(item.id, "reject");
+      await window.khepreeLivestreamAI.resolveApproval(accountId, item.id, "reject");
       await refresh();
     });
 
   const cancelAuto = () =>
     void run(async () => {
-      await window.khepreeLivestreamAI.cancelApprovalAuto(item.id);
+      await window.khepreeLivestreamAI.cancelApprovalAuto(accountId, item.id);
       await refresh();
     });
 
   const stopAuto = () =>
     void run(async () => {
-      await window.khepreeLivestreamAI.stopApprovalAutomation();
+      await window.khepreeLivestreamAI.stopApprovalAutomation(accountId);
       await refresh();
     });
 

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Radio } from "lucide-react";
 import type { TikTokConnectionPhase, TikTokPublicState } from "../../../shared/tiktok-contracts";
+import type { AppSnapshot } from "../../../shared/ipc";
+import { requireFocusedAccountId } from "../../app/accountId";
 import { useAppShell } from "../../app/AppShellContext";
 import type { MessageKey } from "../../i18n/types";
 
@@ -26,15 +28,19 @@ function formatDuration(connectedAt: string | undefined, nowMs: number): string 
   return `${s}s`;
 }
 
-export function TikTokConnectorPanel({ tiktok }: { tiktok: TikTokPublicState }) {
+export function TikTokConnectorPanel({
+  snapshot,
+  tiktok
+}: {
+  snapshot: AppSnapshot;
+  tiktok: TikTokPublicState;
+}) {
   const { t, run, refresh, notify } = useAppShell();
-  const [username, setUsername] = useState(tiktok.uniqueId?.replace(/^@/, "") ?? "");
+  const accountId = snapshot.focusedAccountId;
+  const live = snapshot.lives.find((l) => l.accountId === accountId);
+  const username = (live?.username ?? tiktok.uniqueId ?? "").replace(/^@/, "");
   const [nowMs, setNowMs] = useState(Date.now());
   const busy = tiktok.phase === "CONNECTING" || tiktok.phase === "RECONNECTING";
-
-  useEffect(() => {
-    if (tiktok.uniqueId) setUsername(tiktok.uniqueId.replace(/^@/, ""));
-  }, [tiktok.uniqueId]);
 
   useEffect(() => {
     if (!tiktok.connectedAt) return;
@@ -44,14 +50,16 @@ export function TikTokConnectorPanel({ tiktok }: { tiktok: TikTokPublicState }) 
 
   const connect = () =>
     run(async () => {
-      await window.khepreeLivestreamAI.connectTikTok(username);
+      const id = requireFocusedAccountId(snapshot);
+      await window.khepreeLivestreamAI.connectTikTok(id);
       notify({ tone: "success", title: t("tiktok.toast.connected") });
       await refresh();
     });
 
   const disconnect = () =>
     run(async () => {
-      await window.khepreeLivestreamAI.disconnectTikTok();
+      const id = requireFocusedAccountId(snapshot);
+      await window.khepreeLivestreamAI.disconnectTikTok(id);
       notify({ tone: "info", title: t("tiktok.toast.disconnected") });
       await refresh();
     });
@@ -77,14 +85,21 @@ export function TikTokConnectorPanel({ tiktok }: { tiktok: TikTokPublicState }) 
           <span className="tiktokAt">@</span>
           <input
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            readOnly
             placeholder={t("tiktok.usernamePlaceholder")}
-            disabled={busy || tiktok.connected}
+            disabled={busy || tiktok.connected || !accountId}
             autoComplete="off"
             spellCheck={false}
+            title="Username is bound to the focused TikTok account"
           />
         </div>
       </label>
+
+      {!accountId ? (
+        <p className="tiktokHint" role="status">
+          {t("accounts.needFocus")}
+        </p>
+      ) : null}
 
       <dl className="tiktokMeta">
         <div>
@@ -114,14 +129,19 @@ export function TikTokConnectorPanel({ tiktok }: { tiktok: TikTokPublicState }) 
 
       <div className="row">
         {tiktok.connected || busy ? (
-          <button type="button" className="ghost" onClick={() => void disconnect()}>
+          <button
+            type="button"
+            className="ghost"
+            disabled={!accountId}
+            onClick={() => void disconnect()}
+          >
             {t("tiktok.disconnect")}
           </button>
         ) : (
           <button
             type="button"
             className="primary"
-            disabled={!username.trim() || busy}
+            disabled={!accountId || !username.trim() || busy}
             onClick={() => void connect()}
           >
             {t("tiktok.connect")}

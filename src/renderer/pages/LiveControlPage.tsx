@@ -20,7 +20,11 @@ export function LiveControlPage({ snapshot }: { snapshot: AppSnapshot }) {
       <LiveStatusCards snapshot={snapshot} />
       <LiveControls snapshot={snapshot} />
       <section className="twoCol">
-        <ApprovalQueue items={snapshot.approvals} comments={snapshot.comments.items} />
+        <ApprovalQueue
+          items={snapshot.approvals}
+          comments={snapshot.comments.items}
+          accountId={snapshot.focusedAccountId}
+        />
         <RuntimeHealth items={snapshot.health} />
       </section>
     </>

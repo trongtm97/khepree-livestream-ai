@@ -277,6 +277,27 @@ select:focus, input:focus { border-color:#5d79b8; box-shadow:0 0 0 3px rgba(93,1
   padding:6px 8px; font:inherit;
 }
 .setupGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.setupStack { display:grid; gap:14px; }
+.accountsPanel .accountList { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.accountRow {
+  display:grid; gap:8px; padding:10px 12px;
+  border:1px solid color-mix(in srgb, var(--border, #2a3344) 80%, transparent);
+  border-radius:10px; background: color-mix(in srgb, var(--panel, #121820) 92%, #fff 2%);
+}
+.accountRow.focused { border-color: color-mix(in srgb, #3d8bfd 55%, transparent); }
+.accountRowMain { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.accountLabel { font-weight:500; opacity:0.75; }
+.accountLiveBadge, .accountFocusedBadge {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; padding:2px 8px; border-radius:999px;
+}
+.accountLiveBadge.on { background:#1f3d2f; color:#9decc0; }
+.accountLiveBadge.off { background:#2a3038; color:#9aa3b2; }
+.accountFocusedBadge { background:#1e3358; color:#9ec1ff; }
+.accountRowActions, .accountEditRow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.accountCreate { margin-top:12px; display:grid; gap:8px; padding-top:12px; border-top:1px solid color-mix(in srgb, var(--border, #2a3344) 70%, transparent); }
+.accountCreate h3 { margin:0; font-size:14px; }
+.accountFocusSelect { max-width:220px; }
 .geminiMeta {
   display:grid; grid-template-columns:1fr 1fr; gap:10px 14px;
   margin:0 0 14px; padding:0;

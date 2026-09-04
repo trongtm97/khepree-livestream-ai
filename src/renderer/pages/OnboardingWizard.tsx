@@ -128,7 +128,7 @@ export function OnboardingWizard({
         {step === 4 && (
           <StepBody title={t("onboarding.step4.title")} body={t("onboarding.step4.body")}>
             <StatusLine ok={tiktokOk} okText={t("onboarding.step4.statusOn")} offText={t("onboarding.step4.statusOff")} />
-            <TikTokConnectorPanel tiktok={snapshot.tiktok} />
+            <TikTokConnectorPanel snapshot={snapshot} tiktok={snapshot.tiktok} />
             <p className="onboardingHonest">{t("onboarding.step4.honest")}</p>
             <div className="row onboardingActions">
               <button type="button" className="primary" disabled={loading} onClick={() => void goTo(5)}>

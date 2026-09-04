@@ -1,6 +1,7 @@
 import { Play, Square } from "lucide-react";
 import type { AppSnapshot } from "../../../shared/ipc";
 import type { AutomationMode } from "../../../shared/live-types";
+import { requireFocusedAccountId } from "../../app/accountId";
 import { useAppShell } from "../../app/AppShellContext";
 import { buildReadiness } from "../../app/readiness";
 import { labelAutomationMode, labelLiveState } from "../../i18n";
@@ -24,6 +25,7 @@ export function LiveControls({ snapshot }: { snapshot: AppSnapshot }) {
   const readiness = buildReadiness(snapshot, t);
   const blocked = !snapshot.liveRunning && !readiness.canStartLive;
   const blocking = readiness.items.filter((x) => x.severity === "BLOCKING" && !x.ready);
+  const accountId = snapshot.focusedAccountId;
 
   return (
     <section className="controlStripWrap">
@@ -35,10 +37,15 @@ export function LiveControls({ snapshot }: { snapshot: AppSnapshot }) {
           </label>
           <select
             value={snapshot.automationMode}
+            disabled={!accountId}
             onChange={(e) =>
-              void run(() =>
-                window.khepreeLivestreamAI.setAutomationMode(e.target.value as AutomationMode)
-              )
+              void run(() => {
+                const id = requireFocusedAccountId(snapshot);
+                return window.khepreeLivestreamAI.setAutomationMode(
+                  id,
+                  e.target.value as AutomationMode
+                );
+              })
             }
           >
             {MODES.map((mode) => (
@@ -56,11 +63,19 @@ export function LiveControls({ snapshot }: { snapshot: AppSnapshot }) {
           <div className="controlWithHelp">
             <button
               className="primary"
-              disabled={blocked}
-              title={blocked ? readiness.startBlockedReason : undefined}
+              disabled={blocked || !accountId}
+              title={
+                !accountId
+                  ? t("accounts.needFocus")
+                  : blocked
+                    ? readiness.startBlockedReason
+                    : undefined
+              }
               onClick={() => {
-                if (blocked) return;
-                void run(() => window.khepreeLivestreamAI.startLive());
+                if (blocked || !accountId) return;
+                void run(() =>
+                  window.khepreeLivestreamAI.startLive(requireFocusedAccountId(snapshot))
+                );
               }}
             >
               <Play size={18} /> {t("control.start")}
@@ -68,7 +83,15 @@ export function LiveControls({ snapshot }: { snapshot: AppSnapshot }) {
             <MicroHelp tipId="control.start_ai" />
           </div>
         ) : (
-          <button className="danger" onClick={() => void run(() => window.khepreeLivestreamAI.stopLive())}>
+          <button
+            className="danger"
+            disabled={!accountId}
+            onClick={() =>
+              void run(() =>
+                window.khepreeLivestreamAI.stopLive(requireFocusedAccountId(snapshot))
+              )
+            }
+          >
             <Square size={18} /> {t("control.stop")}
           </button>
         )}
@@ -80,9 +103,15 @@ export function LiveControls({ snapshot }: { snapshot: AppSnapshot }) {
           <ul className="startBlockedList">
             {blocking.map((item) => (
               <li key={item.id}>
-                <span>{item.label}: {item.detail}</span>
+                <span>
+                  {item.label}: {item.detail}
+                </span>
                 {item.cta ? (
-                  <button type="button" className="ghost small" onClick={() => setTab(item.cta!.tab)}>
+                  <button
+                    type="button"
+                    className="ghost small"
+                    onClick={() => setTab(item.cta!.tab)}
+                  >
                     {item.cta.label}
                   </button>
                 ) : null}

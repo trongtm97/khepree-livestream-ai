@@ -125,7 +125,9 @@ export function ProductsPage({ snapshot }: { snapshot: AppSnapshot }) {
 
   const selectLive = (product: ProductDNA) =>
     run(async () => {
-      await window.khepreeLivestreamAI.selectProduct(product.id);
+      const accountId = snapshot.focusedAccountId?.trim();
+      if (!accountId) throw new Error("ACCOUNT_ID_REQUIRED");
+      await window.khepreeLivestreamAI.setCurrentProduct(accountId, product.id);
       notify({ tone: "success", title: t("products.toast.selected", { title: product.title }) });
       await refresh();
     });

@@ -34,12 +34,76 @@ export type LiveEventType =
   | "DISCONNECT"
   | "SYSTEM";
 
+/**
+ * Persistent TikTok seller account (exists whether or not LIVE).
+ * No passwords / raw cookies here — browser profile lives on disk under profileKey.
+ */
+export interface TikTokAccount {
+  id: string;
+  username: string;
+  displayName?: string;
+  label?: string;
+  /** Filesystem-safe immutable key for browser-profiles/<profileKey>. */
+  profileKey: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastConnectedAt?: string;
+}
+
+/** Per-account live automation settings (isolated from other accounts). */
+export interface AccountLiveSettings {
+  accountId: string;
+  automationMode: AutomationMode;
+  currentProductId?: string;
+  mediaProfileId?: string;
+  enabled: boolean;
+  updatedAt: string;
+}
+
+/** One livestream run. An account has many historical sessions; at most one active. */
+export interface LiveSession {
+  id: string;
+  accountId: string;
+  startedAt: string;
+  endedAt?: string;
+  automationMode: AutomationMode;
+  finalState?: string;
+}
+
+/** Operator-facing per-account live status (MultiLiveRuntimeManager snapshots). */
+export interface AccountLiveSnapshot {
+  accountId: string;
+  username: string;
+  label?: string;
+  isRunning: boolean;
+  sessionId?: string;
+  state: string;
+  automationMode: AutomationMode;
+  currentProductId?: string;
+  pendingApprovalCount: number;
+  health: RuntimeHealth;
+}
+
+/**
+ * Transitional stamp when a connector has not yet wired a real TikTokAccount.
+ * Multi-live runtime must replace this before events cross account boundaries.
+ */
+export const UNASSIGNED_ACCOUNT_ID = "acc_unassigned";
+
+/** Default max concurrent livestreams across accounts (Manager-enforced). */
+export const DEFAULT_MAX_CONCURRENT_LIVES = 5;
+
 export interface LiveEvent {
   id: string;
   sequence: number;
   type: LiveEventType;
   source: "tiktoklive" | "live-manager" | "operator" | "system";
   timestamp: string;
+  /** Provenance: which TikTokAccount produced this event. Required. */
+  accountId: string;
+  /** Provenance: which LiveSession (when live). */
+  sessionId?: string;
   userId?: string;
   username?: string;
   displayName?: string;
@@ -99,6 +163,9 @@ export interface ApprovalItem {
   autoApproveAt?: string;
   resolvedAt?: string;
   operatorNote?: string;
+  /** Provenance for multi-live query/diagnostics. */
+  accountId?: string;
+  sessionId?: string;
 }
 
 export interface ProductVariant {

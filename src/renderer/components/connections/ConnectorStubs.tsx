@@ -7,8 +7,8 @@ export function ConnectorStubs({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <>
       <GeminiConnectorPanel gemini={snapshot.gemini} />
-      <TikTokConnectorPanel tiktok={snapshot.tiktok} />
-      <LiveManagerPanel liveManager={snapshot.liveManager} />
+      <TikTokConnectorPanel snapshot={snapshot} tiktok={snapshot.tiktok} />
+      <LiveManagerPanel snapshot={snapshot} liveManager={snapshot.liveManager} />
     </>
   );
 }

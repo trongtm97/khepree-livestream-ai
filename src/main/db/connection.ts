@@ -2,6 +2,10 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
+export const SCHEMA_VERSION_KEY = "schema.version";
+/** Current schema version after multi-live account tables. */
+export const CURRENT_SCHEMA_VERSION = 2;
+
 export function openDatabase(userDataDir: string): Database.Database {
   const dataDir = path.join(userDataDir, "data");
   fs.mkdirSync(dataDir, { recursive: true });
@@ -12,13 +16,41 @@ export function openDatabase(userDataDir: string): Database.Database {
   return db;
 }
 
-function migrate(db: Database.Database): void {
+export function getSchemaVersion(db: Database.Database): number {
+  ensureAppMeta(db);
+  const row = db.prepare("SELECT value FROM app_meta WHERE key=?").get(SCHEMA_VERSION_KEY) as
+    | { value: string }
+    | undefined;
+  if (!row) return 0;
+  const n = Number(row.value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function setSchemaVersion(db: Database.Database, version: number): void {
+  db.prepare(`
+    INSERT INTO app_meta(key, value)
+    VALUES(?, ?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value
+  `).run(SCHEMA_VERSION_KEY, String(version));
+}
+
+function ensureAppMeta(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+  `);
+}
 
+function tableHasColumn(db: Database.Database, table: string, column: string): boolean {
+  // table name is internal-only; never pass user input
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((r) => r.name === column);
+}
+
+function migrateV1Foundation(db: Database.Database): void {
+  db.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY,
       json TEXT NOT NULL,
@@ -61,4 +93,84 @@ function migrate(db: Database.Database): void {
       updated_at TEXT NOT NULL
     );
   `);
+}
+
+/**
+ * Multi-live domain: TikTokAccount + AccountLiveSettings + session/event provenance.
+ * Additive only — never drop existing product/session/event rows.
+ */
+function migrateV2MultiLive(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tiktok_accounts (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      display_name TEXT,
+      label TEXT,
+      profile_key TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_connected_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tiktok_accounts_username
+      ON tiktok_accounts(username);
+
+    CREATE TABLE IF NOT EXISTS account_live_settings (
+      account_id TEXT PRIMARY KEY,
+      automation_mode TEXT NOT NULL,
+      current_product_id TEXT,
+      media_profile_id TEXT,
+      enabled INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES tiktok_accounts(id)
+    );
+  `);
+
+  if (!tableHasColumn(db, "live_sessions", "account_id")) {
+    db.exec(`ALTER TABLE live_sessions ADD COLUMN account_id TEXT`);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_live_sessions_account_active
+      ON live_sessions(account_id, ended_at);
+  `);
+
+  if (!tableHasColumn(db, "live_events", "account_id")) {
+    db.exec(`ALTER TABLE live_events ADD COLUMN account_id TEXT`);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_live_events_account_ts
+      ON live_events(account_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_live_events_session_seq
+      ON live_events(session_id, sequence);
+  `);
+
+  if (!tableHasColumn(db, "approvals", "account_id")) {
+    db.exec(`ALTER TABLE approvals ADD COLUMN account_id TEXT`);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_approvals_account
+      ON approvals(account_id);
+  `);
+}
+
+/**
+ * Versioned, additive migrations.
+ * Legacy DBs without schema.version start at 0; v1 CREATE IF NOT EXISTS preserves rows.
+ */
+export function migrate(db: Database.Database): void {
+  ensureAppMeta(db);
+
+  let version = getSchemaVersion(db);
+
+  if (version < 1) {
+    migrateV1Foundation(db);
+    setSchemaVersion(db, 1);
+    version = 1;
+  }
+
+  if (version < 2) {
+    migrateV2MultiLive(db);
+    setSchemaVersion(db, 2);
+  }
 }

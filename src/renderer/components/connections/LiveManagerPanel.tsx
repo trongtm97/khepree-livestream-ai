@@ -3,6 +3,8 @@ import type {
   LiveManagerPhase,
   LiveManagerPublicState
 } from "../../../shared/live-manager-contracts";
+import type { AppSnapshot } from "../../../shared/ipc";
+import { requireFocusedAccountId } from "../../app/accountId";
 import { useAppShell } from "../../app/AppShellContext";
 import type { MessageKey } from "../../i18n/types";
 
@@ -15,34 +17,43 @@ const PHASE_LABEL: Record<LiveManagerPhase, MessageKey> = {
   ERROR: "liveManager.phase.ERROR"
 };
 
-export function LiveManagerPanel({ liveManager }: { liveManager: LiveManagerPublicState }) {
+export function LiveManagerPanel({
+  snapshot,
+  liveManager
+}: {
+  snapshot: AppSnapshot;
+  liveManager: LiveManagerPublicState;
+}) {
   const { t, run, refresh, notify } = useAppShell();
   const open = liveManager.phase !== "CLOSED";
   const busy = liveManager.phase === "OPENING";
+  const accountId = snapshot.focusedAccountId;
 
   const openBrowser = () =>
     run(async () => {
-      await window.khepreeLivestreamAI.openLiveManager();
+      await window.khepreeLivestreamAI.openLiveManager(requireFocusedAccountId(snapshot));
       notify({ tone: "success", title: t("liveManager.toast.opened") });
       await refresh();
     });
 
   const closeBrowser = () =>
     run(async () => {
-      await window.khepreeLivestreamAI.closeLiveManager();
+      await window.khepreeLivestreamAI.closeLiveManager(requireFocusedAccountId(snapshot));
       notify({ tone: "info", title: t("liveManager.toast.closed") });
       await refresh();
     });
 
   const refreshStatus = () =>
     run(async () => {
-      await window.khepreeLivestreamAI.refreshLiveManager();
+      await window.khepreeLivestreamAI.refreshLiveManager(requireFocusedAccountId(snapshot));
       await refresh();
     });
 
   const captureDiag = () =>
     run(async () => {
-      await window.khepreeLivestreamAI.captureLiveManagerDiagnostic();
+      await window.khepreeLivestreamAI.captureLiveManagerDiagnostic(
+        requireFocusedAccountId(snapshot)
+      );
       notify({ tone: "info", title: t("liveManager.toast.diagnostic") });
       await refresh();
     });
@@ -75,21 +86,47 @@ export function LiveManagerPanel({ liveManager }: { liveManager: LiveManagerPubl
         </p>
       ) : null}
 
+      {!accountId ? (
+        <p className="tiktokHint" role="status">
+          {t("accounts.needFocus")}
+        </p>
+      ) : null}
+
       <div className="row">
         {open ? (
           <>
-            <button type="button" className="ghost" disabled={busy} onClick={() => void refreshStatus()}>
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy || !accountId}
+              onClick={() => void refreshStatus()}
+            >
               {t("liveManager.refresh")}
             </button>
-            <button type="button" className="ghost" disabled={busy} onClick={() => void captureDiag()}>
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy || !accountId}
+              onClick={() => void captureDiag()}
+            >
               {t("liveManager.diagnostic")}
             </button>
-            <button type="button" className="ghost" disabled={busy} onClick={() => void closeBrowser()}>
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy || !accountId}
+              onClick={() => void closeBrowser()}
+            >
               {t("liveManager.close")}
             </button>
           </>
         ) : (
-          <button type="button" className="primary" disabled={busy} onClick={() => void openBrowser()}>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || !accountId}
+            onClick={() => void openBrowser()}
+          >
             {t("liveManager.open")}
           </button>
         )}

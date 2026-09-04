@@ -101,6 +101,7 @@ export function assertCommentPriorityHelpers(): void {
     type: "COMMENT",
     source: "tiktoklive",
     timestamp: new Date().toISOString(),
+    accountId: "acc_test",
     text: "mua size M còn không?"
   };
   const buy = analyzeComment(event);

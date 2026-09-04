@@ -30,6 +30,35 @@ export function AppHeader({ snapshot }: { snapshot: AppSnapshot }) {
           <span>{readiness.label}</span>
         </div>
 
+        <label className="localeSelect accountFocusSelect">
+          <UserRound size={16} />
+          <select
+            value={snapshot.focusedAccountId ?? ""}
+            disabled={loading || snapshot.lives.length === 0}
+            aria-label={t("accounts.title")}
+            onChange={(e) => {
+              const id = e.target.value;
+              if (!id) return;
+              void run(async () => {
+                await window.khepreeLivestreamAI.setFocusedAccount(id);
+                await refresh();
+              });
+            }}
+          >
+            {snapshot.lives.length === 0 ? (
+              <option value="">{t("accounts.empty")}</option>
+            ) : (
+              snapshot.lives.map((live) => (
+                <option key={live.accountId} value={live.accountId}>
+                  {live.username}
+                  {live.isRunning ? " · LIVE" : ""}
+                  {live.label ? ` (${live.label})` : ""}
+                </option>
+              ))
+            )}
+          </select>
+        </label>
+
         <label className="localeSelect">
           <Languages size={16} />
           <select

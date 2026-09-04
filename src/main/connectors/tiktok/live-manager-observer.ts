@@ -48,13 +48,17 @@ export class LiveManagerObserver {
   private pollTimer?: NodeJS.Timeout;
   private readonly fingerprints = new ActivityFingerprintStore();
   readonly profileDir: string;
+  readonly profileKey: string;
 
   constructor(
     private readonly userDataDir: string,
     private selectorPack: SelectorPack,
-    private readonly diagnosticsDir: string
+    private readonly diagnosticsDir: string,
+    profileKey = "tiktok-live-manager"
   ) {
-    this.profileDir = path.join(this.userDataDir, "browser-profiles", "tiktok-live-manager");
+    // profileKey is filesystem-safe (from TikTokAccount.profileKey); never use raw username.
+    this.profileKey = profileKey;
+    this.profileDir = path.join(this.userDataDir, "browser-profiles", profileKey);
   }
 
   getBrowserStatus(): LiveManagerBrowserStatus {

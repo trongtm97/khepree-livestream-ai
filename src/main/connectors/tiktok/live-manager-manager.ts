@@ -11,6 +11,8 @@ import type { LiveEventBus } from "../../core/event-bus";
 import { resolveAppRoot } from "../../app-paths";
 import { LiveManagerObserver } from "./live-manager-observer";
 import { isSelectorPackEmpty, loadLiveManagerSelectorPack } from "./selector-pack-loader";
+import os from "node:os";
+import fs from "node:fs";
 
 const ACTIVITY_POLL_MS = 1_500;
 
@@ -33,6 +35,7 @@ export class LiveManagerManager {
   private activityTimer?: NodeJS.Timeout;
   private scanning = false;
   private publishedCount = 0;
+  private boundProfileKey?: string;
 
   constructor(private readonly opts: LiveManagerManagerOptions) {}
 
@@ -74,20 +77,38 @@ export class LiveManagerManager {
     };
   }
 
-  async open(): Promise<LiveManagerPublicState> {
+  /**
+   * Open LIVE Manager browser for a TikTok account profile.
+   * profileKey must be filesystem-safe (TikTokAccount.profileKey).
+   */
+  async open(profileKey = "tiktok-live-manager"): Promise<LiveManagerPublicState> {
     if (this.opening) return this.getPublicState();
     this.opening = true;
     this.phase = "OPENING";
     this.message = "Opening TikTok LIVE Manager…";
     try {
+      if (this.observer && this.boundProfileKey !== profileKey) {
+        this.stopActivityPoll();
+        await this.observer.close();
+        this.observer = undefined;
+        this.publishedCount = 0;
+      }
+
       if (!this.observer) {
         const pack = loadLiveManagerSelectorPack(resolveAppRoot());
-        const diagnosticsDir = path.join(app.getPath("userData"), "diagnostics", "live-manager");
+        const diagnosticsDir = path.join(
+          app.getPath("userData"),
+          "diagnostics",
+          "live-manager",
+          profileKey
+        );
         this.observer = new LiveManagerObserver(
           app.getPath("userData"),
           pack,
-          diagnosticsDir
+          diagnosticsDir,
+          profileKey
         );
+        this.boundProfileKey = profileKey;
       } else {
         this.observer.updateSelectorPack(loadLiveManagerSelectorPack(resolveAppRoot()));
       }
@@ -199,7 +220,7 @@ function mapBrowserStatus(
   }
 }
 
-// ponytail: self-check — empty pack detection + phase map + activity helpers
+// ponytail: self-check — empty pack + phase map + profileKey path binding
 export function assertLiveManagerContract(): void {
   assertLiveManagerActivityHelpers();
   const empty = isSelectorPackEmpty({
@@ -218,5 +239,34 @@ export function assertLiveManagerContract(): void {
   }
   if (!LIVE_MANAGER_EMPTY_PACK_MESSAGE_VI.includes("Activity Feed")) {
     throw new Error("empty pack VI message drifted");
+  }
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "khepree-lm-profile-"));
+  try {
+    const pack = {
+      version: "t",
+      urls: { liveManager: "https://example.com" },
+      selectors: {
+        commentRows: [] as string[],
+        orderRows: [] as string[],
+        violationRows: [] as string[],
+        productActivityRows: [] as string[]
+      }
+    };
+    const key = "tt_abc123def456";
+    const obs = new LiveManagerObserver(tmp, pack, path.join(tmp, "diag"), key);
+    const normalized = obs.profileDir.replace(/\\/g, "/");
+    if (!normalized.endsWith(`browser-profiles/${key}`)) {
+      throw new Error(`profileKey must map to browser-profiles/<key>, got ${obs.profileDir}`);
+    }
+    if (obs.profileKey !== key) {
+      throw new Error("observer profileKey mismatch");
+    }
+  } finally {
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      /* Windows */
+    }
   }
 }
