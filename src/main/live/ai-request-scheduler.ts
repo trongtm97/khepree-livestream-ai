@@ -230,12 +230,28 @@ export class AiRequestScheduler implements LlmProvider {
     return undefined;
   }
 
-  private startJob(job: AiRequestJob): void {
+  private isJobSessionActive(job: AiRequestJob): boolean {
+    if (!job.sessionId) return true;
     const activeSession = this.activeSessions.get(job.accountId);
-    if (activeSession && job.sessionId && job.sessionId !== activeSession) {
-      this.staleDropped += 1;
-      this.fallbackCount += 1;
-      job.resolve(staleProposal(job.context, "session_mismatch"));
+    return Boolean(activeSession && activeSession === job.sessionId);
+  }
+
+  private discardStaleJob(job: AiRequestJob, reason: string): void {
+    this.staleDropped += 1;
+    this.fallbackCount += 1;
+    console.info("[AI_STALE_RESULT_DROPPED]", {
+      accountId: job.accountId,
+      oldSessionId: job.sessionId,
+      currentSessionId: this.activeSessions.get(job.accountId)
+    });
+    job.resolve(staleProposal(job.context, reason));
+  }
+
+  private startJob(job: AiRequestJob): void {
+    if (job.sessionId && !this.isJobSessionActive(job)) {
+      const activeSession = this.activeSessions.get(job.accountId);
+      const reason = activeSession ? "session_mismatch" : "session_ended";
+      this.discardStaleJob(job, reason);
       queueMicrotask(() => this.pump());
       return;
     }
@@ -266,6 +282,10 @@ export class AiRequestScheduler implements LlmProvider {
       .then((proposal) => {
         this.latencySum += Math.max(0, this.now() - started);
         this.latencyCount += 1;
+        if (job.sessionId && !this.isJobSessionActive(job)) {
+          this.discardStaleJob(job, "session_ended");
+          return;
+        }
         job.resolve(proposal);
       })
       .catch((error) => {

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC, type RendererApi } from "../shared/ipc";
+import type { AppEvent } from "../shared/app-events";
 import type { LlmProviderId } from "../shared/gemini-contracts";
 import type { AppLocale } from "../shared/locale";
 import type { OnboardingState } from "../shared/onboarding";
@@ -10,9 +11,23 @@ const api: RendererApi = {
   getAccountSnapshot: (accountId: string) =>
     ipcRenderer.invoke(IPC.LIVE_ACCOUNT_SNAPSHOT, accountId),
   getMultiLiveSnapshot: () => ipcRenderer.invoke(IPC.LIVE_MULTI_SNAPSHOT),
+  getCommentsSnapshot: (accountId?: string) =>
+    ipcRenderer.invoke(IPC.COMMENTS_SNAPSHOT, accountId),
+  getHealthSnapshot: () => ipcRenderer.invoke(IPC.HEALTH_SNAPSHOT),
+  onAppEvent: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: AppEvent) => {
+      callback(payload);
+    };
+    ipcRenderer.on(IPC.APP_EVENT, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC.APP_EVENT, listener);
+    };
+  },
 
   startLive: (accountId: string) => ipcRenderer.invoke(IPC.LIVE_START, accountId),
   stopLive: (accountId: string) => ipcRenderer.invoke(IPC.LIVE_STOP, accountId),
+  startReadyLives: () => ipcRenderer.invoke(IPC.LIVE_START_READY_BATCH),
+  stopAllLives: () => ipcRenderer.invoke(IPC.LIVE_STOP_ALL),
   setAutomationMode: (accountId: string, mode: AutomationMode) =>
     ipcRenderer.invoke(IPC.LIVE_SET_MODE, accountId, mode),
 
@@ -83,7 +98,27 @@ const api: RendererApi = {
   testGemini: (prompt?: string) => ipcRenderer.invoke(IPC.GEMINI_TEST, prompt),
   saveGeminiSession: (secure1PSID: string, secure1PSIDTS?: string) =>
     ipcRenderer.invoke(IPC.GEMINI_SAVE_SESSION, secure1PSID, secure1PSIDTS),
-  clearGeminiSession: () => ipcRenderer.invoke(IPC.GEMINI_CLEAR_SESSION)
+  clearGeminiSession: () => ipcRenderer.invoke(IPC.GEMINI_CLEAR_SESSION),
+
+  listMediaVoices: () => ipcRenderer.invoke(IPC.MEDIA_LIST_VOICES),
+  getMediaProfile: (accountId: string) =>
+    ipcRenderer.invoke(IPC.MEDIA_GET_PROFILE, accountId),
+  setMediaProfile: (accountId, patch) =>
+    ipcRenderer.invoke(IPC.MEDIA_SET_PROFILE, accountId, patch),
+  previewMediaVoice: (accountId: string, text?: string) =>
+    ipcRenderer.invoke(IPC.MEDIA_PREVIEW, accountId, text),
+  getMediaEngineStatus: () => ipcRenderer.invoke(IPC.MEDIA_ENGINE_STATUS),
+
+  enterTakeover: (accountId: string) =>
+    ipcRenderer.invoke(IPC.OPERATOR_TAKEOVER, accountId),
+  exitTakeover: (accountId: string) =>
+    ipcRenderer.invoke(IPC.OPERATOR_EXIT_TAKEOVER, accountId),
+  toggleTakeover: (accountId: string) =>
+    ipcRenderer.invoke(IPC.OPERATOR_TOGGLE_TAKEOVER, accountId),
+  emergencyStopAllAi: () => ipcRenderer.invoke(IPC.OPERATOR_EMERGENCY_STOP),
+  getOperatorControlState: () => ipcRenderer.invoke(IPC.OPERATOR_GET_STATE),
+  setTakeoverHotkey: (hotkey: string) =>
+    ipcRenderer.invoke(IPC.OPERATOR_SET_HOTKEY, hotkey)
 };
 
 contextBridge.exposeInMainWorld("khepreeLivestreamAI", api);

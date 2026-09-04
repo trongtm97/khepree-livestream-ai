@@ -7,8 +7,11 @@ import type {
 } from "../../shared/live-types";
 import { DEFAULT_ACCOUNT_AUTOMATION_MODE } from "../../shared/tiktok-account";
 import type { LlmProvider } from "../connectors/llm/types";
-import type { MediaProvider } from "../connectors/media/types";
+import type { MediaSession } from "../connectors/media/types";
 import { MockMediaProvider } from "../connectors/media/mock-media-provider";
+import { OperatorControlService } from "./operator-control-service";
+import type { OperatorControlPublicSnapshot } from "../../shared/operator-control";
+import type { OperatorControlMode } from "../../shared/operator-control";
 import type {
   AccountLiveSettingsRepository,
   TikTokAccountRepository
@@ -18,6 +21,13 @@ import {
   type LiveRuntimeRepositories
 } from "./live-runtime";
 import type { LiveCapacityService } from "./live-capacity-service";
+import {
+  LIVE_BATCH_REASONS,
+  isCapacityOrLicenseReason,
+  normalizeBatchErrorCode,
+  type LiveStartReadyBatchResult,
+  type LiveStopAllBatchResult
+} from "../../shared/live-batch";
 
 export type MultiLiveRuntimeManagerDeps = {
   accounts: TikTokAccountRepository;
@@ -37,8 +47,8 @@ export type MultiLiveRuntimeManagerDeps = {
     activeBrowserContexts: number;
     aiQueueLength: number;
   };
-  /** Factory so each runtime can own a media session later. */
-  createMedia?: () => MediaProvider;
+  /** Factory so each runtime owns a MediaSession (accountId required). */
+  createMedia?: (accountId: string) => MediaSession;
   /**
    * Extra readiness after account/entitlement/concurrency checks.
    * Throw to block start (e.g. missing product DNA).
@@ -50,6 +60,9 @@ export type MultiLiveRuntimeManagerDeps = {
   onLiveStarted?: (accountId: string, sessionId: string) => void;
   /** Cancel queued AI jobs when live stops (optional). */
   onLiveStopped?: (accountId: string) => void;
+  /** Shared operator control (takeover / emergency). */
+  operatorControl?: OperatorControlService;
+  onOperatorControlChanged?: (accountId?: string) => void;
 };
 
 /**
@@ -97,7 +110,7 @@ export class MultiLiveRuntimeManager {
     const account = this.deps.accounts.get(accountId);
     if (!account) throw new Error("TIKTOK_ACCOUNT_NOT_FOUND");
 
-    const media = this.deps.createMedia?.() ?? new MockMediaProvider();
+    const media = this.deps.createMedia?.(accountId) ?? new MockMediaProvider(accountId);
     const runtime = new LiveRuntime({
       account,
       llm: this.deps.llm,
@@ -183,11 +196,94 @@ export class MultiLiveRuntimeManager {
     this.deps.onLiveStopped?.(accountId);
   }
 
-  /** App quit / emergency global stop — does not dispose Gemini, DB, or Khepree. */
-  stopAll(): void {
-    for (const id of [...this.runtimes.keys()]) {
-      this.stopLive(id);
+  /**
+   * Start every ready account. Per-account catch — one failure never aborts the rest.
+   * Capacity is re-checked inside each startLive (dynamic after each success).
+   */
+  startReadyLives(opts?: {
+    isTikTokConnected?: (accountId: string) => boolean;
+  }): LiveStartReadyBatchResult {
+    this.assertNotDisposed();
+    const started: LiveStartReadyBatchResult["started"] = [];
+    const skipped: LiveStartReadyBatchResult["skipped"] = [];
+    const failed: LiveStartReadyBatchResult["failed"] = [];
+    const accounts = this.listAccounts();
+
+    for (const account of accounts) {
+      const accountId = account.id;
+
+      if (this.runtimes.get(accountId)?.isRunning) {
+        skipped.push({ accountId, reasonCode: LIVE_BATCH_REASONS.ALREADY_RUNNING });
+        continue;
+      }
+      if (!account.enabled) {
+        skipped.push({ accountId, reasonCode: LIVE_BATCH_REASONS.ACCOUNT_DISABLED });
+        continue;
+      }
+
+      const settings = this.deps.accountLiveSettings.ensure(accountId);
+      if (!settings.enabled) {
+        skipped.push({ accountId, reasonCode: LIVE_BATCH_REASONS.ACCOUNT_SETTINGS_DISABLED });
+        continue;
+      }
+
+      const productId =
+        this.runtimes.get(accountId)?.currentProductId ?? settings.currentProductId;
+      if (!productId) {
+        skipped.push({ accountId, reasonCode: LIVE_BATCH_REASONS.NO_PRODUCT });
+        continue;
+      }
+
+      if (opts?.isTikTokConnected && !opts.isTikTokConnected(accountId)) {
+        skipped.push({ accountId, reasonCode: LIVE_BATCH_REASONS.TIKTOK_DISCONNECTED });
+        continue;
+      }
+
+      try {
+        this.startLive(accountId);
+        started.push({ accountId });
+      } catch (error) {
+        const reasonCode = normalizeBatchErrorCode(error);
+        if (isCapacityOrLicenseReason(reasonCode)) {
+          skipped.push({ accountId, reasonCode: LIVE_BATCH_REASONS.CAPACITY_LIMIT });
+        } else {
+          failed.push({ accountId, reasonCode });
+        }
+      }
     }
+
+    return {
+      attempted: accounts.length,
+      started,
+      skipped,
+      failed
+    };
+  }
+
+  /** Stop all running AI lives — does not disconnect TikTok or close browsers. */
+  stopAll(): LiveStopAllBatchResult {
+    const stopped: LiveStopAllBatchResult["stopped"] = [];
+    const skipped: LiveStopAllBatchResult["skipped"] = [];
+    const failed: LiveStopAllBatchResult["failed"] = [];
+    const accounts = this.listAccounts();
+    let attempted = 0;
+
+    for (const account of accounts) {
+      const accountId = account.id;
+      if (!this.runtimes.get(accountId)?.isRunning) {
+        skipped.push({ accountId, reasonCode: "NOT_RUNNING" });
+        continue;
+      }
+      attempted += 1;
+      try {
+        this.stopLive(accountId);
+        stopped.push({ accountId });
+      } catch (error) {
+        failed.push({ accountId, reasonCode: normalizeBatchErrorCode(error) });
+      }
+    }
+
+    return { attempted, stopped, skipped, failed };
   }
 
   disposeAccount(accountId: string): void {
@@ -242,6 +338,62 @@ export class MultiLiveRuntimeManager {
 
   stopAutomation(accountId: string): void {
     this.requireRuntime(accountId).stopAutomation();
+  }
+
+  enterTakeover(accountId: string): OperatorControlMode {
+    this.assertNotDisposed();
+    const control = this.requireOperatorControl();
+    control.enterTakeover(accountId);
+    const runtime = this.runtimes.get(accountId);
+    runtime?.enterTakeover();
+    this.deps.onOperatorControlChanged?.(accountId);
+    return control.getMode(accountId);
+  }
+
+  exitTakeover(accountId: string): OperatorControlMode {
+    this.assertNotDisposed();
+    const control = this.requireOperatorControl();
+    control.exitTakeover(accountId);
+    const runtime = this.runtimes.get(accountId);
+    runtime?.exitTakeover();
+    this.deps.onOperatorControlChanged?.(accountId);
+    return control.getMode(accountId);
+  }
+
+  /** Toggle takeover for focused hotkey. */
+  toggleTakeover(accountId: string): OperatorControlMode {
+    const mode = this.deps.operatorControl?.getMode(accountId) ?? "AI_ACTIVE";
+    if (mode === "HUMAN_TAKEOVER") return this.exitTakeover(accountId);
+    return this.enterTakeover(accountId);
+  }
+
+  /**
+   * Global emergency: mute all runtimes. Does not logout / disconnect TikTok / delete sessions.
+   */
+  emergencyStopAllAi(): OperatorControlPublicSnapshot {
+    this.assertNotDisposed();
+    const control = this.requireOperatorControl();
+    const ids = this.listAccounts().map((a) => a.id);
+    const snap = control.emergencyStopAll(ids);
+    for (const rt of this.runtimes.values()) {
+      rt.muteAi();
+      rt.stopAutomation();
+    }
+    this.deps.onOperatorControlChanged?.(undefined);
+    return snap;
+  }
+
+  getOperatorControlSnapshot(): OperatorControlPublicSnapshot {
+    const control = this.deps.operatorControl;
+    const ids = this.listAccounts().map((a) => a.id);
+    if (!control) {
+      return {
+        byAccount: {},
+        emergencyStop: false,
+        takeoverHotkey: "F8"
+      };
+    }
+    return control.snapshot(ids);
   }
 
   getSnapshot(accountId: string): AccountLiveSnapshot {
@@ -325,6 +477,7 @@ export class MultiLiveRuntimeManager {
         DEFAULT_ACCOUNT_AUTOMATION_MODE,
       currentProductId: runtime?.currentProductId ?? settings?.currentProductId,
       pendingApprovalCount: runtime?.listApprovals().length ?? 0,
+      operatorMode: this.deps.operatorControl?.getMode(account.id) ?? "AI_ACTIVE",
       health: runtime?.health() ?? {
         component: `live-runtime:${account.id}`,
         status: "DISABLED",
@@ -332,6 +485,11 @@ export class MultiLiveRuntimeManager {
         checkedAt: new Date().toISOString()
       }
     };
+  }
+
+  private requireOperatorControl(): OperatorControlService {
+    if (!this.deps.operatorControl) throw new Error("OPERATOR_CONTROL_UNAVAILABLE");
+    return this.deps.operatorControl;
   }
 
   private assertNotDisposed(): void {

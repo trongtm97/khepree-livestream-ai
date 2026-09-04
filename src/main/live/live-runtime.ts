@@ -7,7 +7,7 @@ import type {
   TikTokAccount
 } from "../../shared/live-types";
 import type { LlmProvider } from "../connectors/llm/types";
-import type { MediaProvider } from "../connectors/media/types";
+import type { MediaSession } from "../connectors/media/types";
 import { LiveEventBus } from "../core/event-bus";
 import type {
   AccountLiveSettingsRepository,
@@ -17,6 +17,7 @@ import type {
   ProductRepository
 } from "../db/repositories";
 import { LiveOrchestrator } from "./live-orchestrator";
+import { LiveEventDeduplicator } from "./live-event-deduplicator";
 import { DEFAULT_ACCOUNT_AUTOMATION_MODE } from "../../shared/tiktok-account";
 
 export type LiveRuntimeRepositories = {
@@ -30,7 +31,7 @@ export type LiveRuntimeRepositories = {
 export type LiveRuntimeDeps = {
   account: TikTokAccount;
   llm: LlmProvider;
-  media: MediaProvider;
+  media: MediaSession;
   repositories: LiveRuntimeRepositories;
   /** Optional override — defaults to a fresh isolated bus. */
   eventBus?: LiveEventBus;
@@ -51,8 +52,9 @@ export class LiveRuntime {
   private readonly approvalsRepo: ApprovalRepository;
   private readonly sessions: LiveSessionRepository;
   private readonly settings: AccountLiveSettingsRepository;
-  private readonly media: MediaProvider;
+  private readonly media: MediaSession;
   private readonly orchestrator: LiveOrchestrator;
+  private readonly deduper = new LiveEventDeduplicator();
   private readonly onApprovalChanged?: (item: ApprovalItem) => void;
   private disposed = false;
   private productId?: string;
@@ -81,6 +83,7 @@ export class LiveRuntime {
     };
 
     this.orchestrator = new LiveOrchestrator({
+      accountId: this.account.id,
       eventBus: this.eventBus,
       llm: deps.llm,
       media: deps.media,
@@ -174,11 +177,13 @@ export class LiveRuntime {
       throw new Error("ACCOUNT_LIVE_ACTIVE");
     }
     this.orchestrator.start();
+    this.media.bindSession(this.sessionId);
   }
 
   stop(): void {
     if (this.disposed) return;
     this.orchestrator.stop();
+    this.media.bindSession(undefined);
   }
 
   /**
@@ -201,6 +206,11 @@ export class LiveRuntime {
       accountId: this.accountId,
       sessionId: event.sessionId ?? (this.isRunning ? this.sessionId : undefined)
     };
+
+    // Cross-source dedupe (TikTokLive ↔ LIVE Manager) before repo + bus.
+    if (!this.deduper.accept(stamped)) {
+      return;
+    }
 
     this.events.save(stamped.sessionId ?? null, stamped);
     this.eventBus.publish(stamped);
@@ -235,6 +245,22 @@ export class LiveRuntime {
     });
   }
 
+  enterTakeover(): void {
+    this.orchestrator.enterTakeover();
+  }
+
+  exitTakeover(): void {
+    this.orchestrator.exitTakeover();
+  }
+
+  muteAi(): void {
+    this.orchestrator.muteAi();
+  }
+
+  get isAiMuted(): boolean {
+    return this.orchestrator.isAiMuted;
+  }
+
   get supervisedDelayMs(): number {
     return this.orchestrator.supervisedDelayMs;
   }
@@ -242,7 +268,7 @@ export class LiveRuntime {
   dispose(): void {
     if (this.disposed) return;
     this.stop();
-    void this.media.stopSpeech().catch(() => undefined);
+    void this.media.dispose().catch(() => undefined);
     this.disposed = true;
     this.touchHealth("DOWN", "disposed");
   }
@@ -262,8 +288,8 @@ export class LiveRuntime {
 
   private persistApproval(item: ApprovalItem): void {
     const stamped = this.stampApproval(item);
-    // Active live must persist with real session id — never null.
-    if (this.isRunning && !stamped.sessionId) {
+    // Live enqueue must carry session; expired/history may persist after stop.
+    if (stamped.status === "PENDING" && !stamped.sessionId) {
       throw new Error("APPROVAL_SESSION_REQUIRED");
     }
     this.approvalsRepo.save(stamped.sessionId ?? null, stamped);

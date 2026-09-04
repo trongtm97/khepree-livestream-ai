@@ -10,7 +10,7 @@ import type { LlmContext, LlmProvider } from "../connectors/llm/types";
 import type { MediaProvider } from "../connectors/media/types";
 import { LiveEventBus } from "../core/event-bus";
 import { detectSalesCommentIntent } from "../../shared/sales-brain";
-import { ApprovalEngine } from "./approval-engine";
+import { ApprovalEngine, type ApprovalEngineOptions } from "./approval-engine";
 import { scoreComment } from "./comment-priority";
 import { LiveMemory } from "./live-memory";
 import { PolicyGuard } from "./policy-guard";
@@ -21,26 +21,38 @@ export interface LiveOrchestratorDeps {
   llm: LlmProvider;
   media: MediaProvider;
   getCurrentProduct: () => ProductDNA | undefined;
+  /** TikTok account owning this orchestrator — stamped on every approval. */
+  accountId: string;
   onApprovalChanged?: (item: ApprovalItem) => void;
   /** Persist session row when live starts/stops. */
   onSessionStart?: (sessionId: string, mode: AutomationMode) => void;
   onSessionEnd?: (sessionId: string, finalState: string) => void;
+  /** Test seam for ApprovalEngine timing/thresholds. */
+  approvalOptions?: Partial<ApprovalEngineOptions>;
 }
 
 export class LiveOrchestrator {
   private mode: AutomationMode = "SUPERVISED_AUTO";
   private running = false;
+  /** Bumped on start/stop so in-flight LLM work from a prior run cannot apply. */
+  private runGeneration = 0;
+  /** Operator mute — no speak / no new AI proposals. */
+  private aiMuted = false;
+  /** On exit takeover: ignore comment events with timestamp <= this. */
+  private discardEventsBeforeMs = 0;
   private readonly stateMachine = new SalesStateMachine();
-  private readonly approvals = new ApprovalEngine({
-    supervisedDelayMs: 3500,
-    confidenceThreshold: 0.92
-  });
+  private readonly approvals: ApprovalEngine;
   private readonly guard = new PolicyGuard();
   private readonly memory = new LiveMemory();
   private unsubscribe?: () => void;
   private timer?: NodeJS.Timeout;
 
-  constructor(private readonly deps: LiveOrchestratorDeps) {}
+  constructor(private readonly deps: LiveOrchestratorDeps) {
+    this.approvals = new ApprovalEngine({
+      supervisedDelayMs: deps.approvalOptions?.supervisedDelayMs ?? 3500,
+      confidenceThreshold: deps.approvalOptions?.confidenceThreshold ?? 0.92
+    });
+  }
 
   get isRunning(): boolean {
     return this.running;
@@ -69,6 +81,7 @@ export class LiveOrchestrator {
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.runGeneration += 1;
 
     // New live → reset short-term memory (prompt 16).
     const product = this.deps.getCurrentProduct();
@@ -81,7 +94,10 @@ export class LiveOrchestrator {
 
     this.unsubscribe = this.deps.eventBus.subscribe((event) => this.handleEvent(event));
     this.timer = setInterval(() => {
-      for (const item of this.approvals.collectTimedApprovals()) {
+      if (this.aiMuted) return;
+      const activeSessionId = this.sessionId;
+      if (!activeSessionId) return;
+      for (const item of this.approvals.collectTimedApprovals(activeSessionId)) {
         this.deps.onApprovalChanged?.(item);
         void this.execute(item);
       }
@@ -89,10 +105,15 @@ export class LiveOrchestrator {
   }
 
   stop(): void {
-    if (this.memory.id) {
-      this.deps.onSessionEnd?.(this.memory.id, this.stateMachine.current);
+    const sessionId = this.memory.id;
+    if (sessionId) {
+      for (const item of this.approvals.expireSession(sessionId)) {
+        this.deps.onApprovalChanged?.(item);
+      }
+      this.deps.onSessionEnd?.(sessionId, this.stateMachine.current);
     }
     this.running = false;
+    this.runGeneration += 1;
     this.stateMachine.stop();
     this.memory.setLastState(this.stateMachine.current);
     this.memory.clearSession();
@@ -108,7 +129,7 @@ export class LiveOrchestrator {
     decision: "approve" | "reject",
     editedSpeech?: string
   ): Promise<void> {
-    const item = this.approvals.resolve(id, decision, editedSpeech);
+    const item = this.approvals.resolve(id, decision, editedSpeech, this.sessionId);
     this.deps.onApprovalChanged?.(item);
     if (item.status === "APPROVED") await this.execute(item);
   }
@@ -131,8 +152,72 @@ export class LiveOrchestrator {
 
   /** Operator "Dừng tự động": clear countdowns and drop to manual assist. */
   stopAutomation(): void {
-    this.approvals.cancelAllAutoApprovals();
+    for (const item of this.approvals.cancelAllAutoApprovals()) {
+      this.deps.onApprovalChanged?.(item);
+    }
     this.mode = "MANUAL_ASSIST";
+  }
+
+  /**
+   * Human takeover: mute AI speak path, kill TTS queue, expire pending approvals.
+   * Live session stays running (TikTok / browser untouched by caller).
+   */
+  enterTakeover(): void {
+    this.aiMuted = true;
+    this.runGeneration += 1;
+    for (const item of this.approvals.expireAllPending()) {
+      this.deps.onApprovalChanged?.(item);
+    }
+    void this.deps.media.stopSpeech();
+  }
+
+  /**
+   * Return AI control: do not replay old speech; discard events older than now.
+   */
+  exitTakeover(): void {
+    this.discardEventsBeforeMs = Date.now();
+    for (const item of this.approvals.expireAllPending()) {
+      this.deps.onApprovalChanged?.(item);
+    }
+    void this.deps.media.stopSpeech();
+    this.aiMuted = false;
+  }
+
+  /** Emergency / pause mute without ending the live session. */
+  muteAi(): void {
+    this.aiMuted = true;
+    this.runGeneration += 1;
+    for (const item of this.approvals.expireAllPending()) {
+      this.deps.onApprovalChanged?.(item);
+    }
+    void this.deps.media.stopSpeech();
+  }
+
+  get isAiMuted(): boolean {
+    return this.aiMuted;
+  }
+
+  private isCurrentGeneration(generation: number, sessionId: string | undefined): boolean {
+    return (
+      this.running &&
+      generation === this.runGeneration &&
+      sessionId !== undefined &&
+      sessionId === this.sessionId
+    );
+  }
+
+  private dropStaleAiResult(
+    event: LiveEvent,
+    generation: number,
+    sessionId: string | undefined
+  ): void {
+    console.info("[AI_STALE_RESULT_DROPPED]", {
+      accountId: event.accountId,
+      oldSessionId: sessionId,
+      currentSessionId: this.sessionId,
+      generation,
+      currentGeneration: this.runGeneration
+    });
   }
 
   private async handleEvent(event: LiveEvent): Promise<void> {
@@ -151,13 +236,32 @@ export class LiveOrchestrator {
       });
     }
 
+    if (this.aiMuted) return;
+
+    const eventTs = event.timestamp ? Date.parse(event.timestamp) : Number.NaN;
+    if (
+      this.discardEventsBeforeMs > 0 &&
+      Number.isFinite(eventTs) &&
+      eventTs <= this.discardEventsBeforeMs
+    ) {
+      return;
+    }
+
     if (event.type === "COMMENT" && scoreComment(event) < 45) {
       return;
     }
 
     if (!["COMMENT", "ORDER_ACTIVITY"].includes(event.type)) return;
 
-    let proposal = await this.generateProposal(event);
+    const generation = this.runGeneration;
+    const sessionId = this.sessionId;
+
+    let proposal = await this.generateProposal(event, generation, sessionId);
+    if (!this.isCurrentGeneration(generation, sessionId)) {
+      this.dropStaleAiResult(event, generation, sessionId);
+      return;
+    }
+
     const guarded = this.guard.validate(proposal, this.deps.getCurrentProduct());
     if (!guarded.allowed) {
       proposal = {
@@ -173,6 +277,18 @@ export class LiveOrchestrator {
       proposal = guarded.proposal;
     }
 
+    if (!this.isCurrentGeneration(generation, sessionId)) {
+      this.dropStaleAiResult(event, generation, sessionId);
+      return;
+    }
+
+    if (!sessionId) return;
+    const accountId = this.deps.accountId.trim() || event.accountId?.trim();
+    if (!accountId) {
+      console.error("[LiveOrchestrator] approval enqueue missing accountId");
+      return;
+    }
+
     const item = this.approvals.enqueue(
       {
         ...proposal,
@@ -184,7 +300,8 @@ export class LiveOrchestrator {
           eventType: event.type
         }
       },
-      this.mode
+      this.mode,
+      { accountId, sessionId }
     );
     this.deps.onApprovalChanged?.(item);
   }
@@ -214,7 +331,21 @@ export class LiveOrchestrator {
     };
   }
 
-  private async generateProposal(event: LiveEvent): Promise<ActionProposal> {
+  private async generateProposal(
+    event: LiveEvent,
+    generation: number,
+    sessionId: string | undefined
+  ): Promise<ActionProposal> {
+    const staleIgnore = (): ActionProposal => ({
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      eventId: event.id,
+      kind: "IGNORE",
+      confidence: 1,
+      reason: "Stale AI result after session epoch change",
+      riskTags: ["scheduler_stale", "session_ended"]
+    });
+
     const fail = (error: unknown): ActionProposal => ({
       id: randomUUID(),
       createdAt: new Date().toISOString(),
@@ -228,6 +359,10 @@ export class LiveOrchestrator {
     let proposal = await this.deps.llm
       .generateActionProposal(this.buildLlmContext(event))
       .catch(fail);
+
+    if (!this.isCurrentGeneration(generation, sessionId)) {
+      return staleIgnore();
+    }
 
     if (
       proposal.speech &&
@@ -243,6 +378,10 @@ export class LiveOrchestrator {
           )
         )
         .catch(fail);
+
+      if (!this.isCurrentGeneration(generation, sessionId)) {
+        return staleIgnore();
+      }
 
       if (
         regenerated.speech &&
@@ -268,10 +407,12 @@ export class LiveOrchestrator {
   }
 
   private async execute(item: ApprovalItem): Promise<void> {
+    if (!this.running || this.aiMuted) return;
     try {
       switch (item.proposal.kind) {
         case "SPEAK":
         case "THANK_USER":
+          if (this.aiMuted) return;
           if (item.proposal.speech) {
             await this.deps.media.speak(item.proposal.speech);
             this.memory.rememberSpeech(item.proposal.speech, {

@@ -120,7 +120,7 @@ export async function assertMultiLiveManagerRegistry(): Promise<void> {
         accountLiveSettings
       },
       llm: new MockLlmProvider(),
-      createMedia: () => new MockMediaProvider(),
+      createMedia: (accountId) => new MockMediaProvider(accountId),
       assertProductAccess: () => undefined,
       capacity: createTestLiveCapacity({ maxConcurrentLives: 5 }),
       onEvent: (event) => {

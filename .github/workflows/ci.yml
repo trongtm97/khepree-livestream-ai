@@ -30,3 +30,6 @@ jobs:
 
       - name: Foundation contract check
         run: npm run test:foundation
+
+      - name: Smoke mode gate (REAL must stay opt-in)
+        run: npm run test:smoke:gate

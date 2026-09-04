@@ -17,7 +17,9 @@ import { OnboardingWizard } from "../pages/OnboardingWizard";
 import { OverviewPage } from "../pages/OverviewPage";
 import { ProductsPage } from "../pages/ProductsPage";
 import { SettingsPage } from "../pages/SettingsPage";
+import { VoicePage } from "../pages/VoicePage";
 import { AppShellProvider } from "./AppShellContext";
+import { createSnapshotSyncController } from "./snapshot-sync";
 import type { AppShellValue, AppTab } from "./types";
 
 let toastSeq = 0;
@@ -43,11 +45,44 @@ export function App() {
     setSnapshot(await window.khepreeLivestreamAI.snapshot());
   }, []);
 
+  const refreshComments = useCallback(async () => {
+    const comments = await window.khepreeLivestreamAI.getCommentsSnapshot();
+    setSnapshot((prev) => (prev ? { ...prev, comments } : prev));
+  }, []);
+
+  const refreshHealth = useCallback(async () => {
+    const health = await window.khepreeLivestreamAI.getHealthSnapshot();
+    setSnapshot((prev) => (prev ? { ...prev, health } : prev));
+  }, []);
+
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), 1200);
-    return () => clearInterval(timer);
-  }, [refresh]);
+
+    const sync = createSnapshotSyncController({
+      refreshFull: refresh,
+      refreshComments,
+      refreshHealth,
+      coalesceMs: 100,
+      fallbackMs: 12_000,
+      healthMs: 8_000
+    });
+
+    let unsub: (() => void) | undefined;
+    try {
+      unsub = window.khepreeLivestreamAI.onAppEvent((event) => {
+        sync.handleEvent(event);
+      });
+    } catch (error) {
+      console.error("[App] onAppEvent subscription failed — slow sync only", error);
+    }
+
+    const stopTimers = sync.start();
+    return () => {
+      unsub?.();
+      stopTimers();
+      sync.stop();
+    };
+  }, [refresh, refreshComments, refreshHealth]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((item) => item.id !== id));
@@ -204,7 +239,7 @@ export function App() {
             {tab === "comments" && <CommentsPage snapshot={snapshot} />}
             {tab === "products" && <ProductsPage snapshot={snapshot} />}
             {tab === "script" && <ComingSoonPage feature="script" />}
-            {tab === "avatar" && <ComingSoonPage feature="avatar" />}
+            {tab === "avatar" && snapshot && <VoicePage snapshot={snapshot} />}
             {tab === "connections" && <ConnectionsPage snapshot={snapshot} />}
             {tab === "logs" && <ComingSoonPage feature="logs" />}
             {tab === "settings" && <SettingsPage snapshot={snapshot} />}

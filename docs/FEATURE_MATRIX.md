@@ -1,54 +1,76 @@
 # Feature matrix — Khepree Livestream AI
 
-Nguồn sự thật: **source code hiện tại** (không phải bản foundation cũ).
+Nguồn sự thật: **source code hiện tại** (rà lại sau Prompt 01–09, 2026-09-04).
 
-- **Development milestone:** `0.2.x` (multi-live core wired)
+- **Development milestone:** `0.3.x` (multi-live + hardening + voice pipeline)
 - **package.json version:** `0.1.0` (chưa bump release production)
-- **Ngày rà:** 2026-09-04
-- **Gate:** `npm run typecheck` · `npm test` · `npm run test:foundation`
+- **Gate:** `npm run typecheck` · `npm test` · `npm run test:foundation` · `npm run test:smoke:gate`
 
 ## Status legend
 
 | Status | Nghĩa |
 | --- | --- |
-| **IMPLEMENTED** | Đã viết, đã nối vào app đang chạy, có kiểm chứng tự động hoặc wiring rõ |
-| **PARTIAL** | Có hành vi thật trong app, còn thiếu mảnh quan trọng hoặc chưa smoke thật |
+| **IMPLEMENTED** | Đã viết, đã nối vào app, có Vitest/wiring rõ |
+| **PARTIAL** | Có hành vi thật trong app, còn thiếu mảnh quan trọng |
 | **FOUNDATION_ONLY** | Có type/class/sidecar/file, wiring mỏng hoặc pack rỗng |
+| **REAL_SMOKE_PENDING** | Code local/mock đủ dùng, **chưa** PASS trên tài khoản/API thật |
 | **NOT_IMPLEMENTED** | Không có code có nghĩa |
-| **LIVE_SMOKE_PENDING** | Code đầy đủ ở lớp local/mock, **chưa** test tài khoản/API thật |
 
 ---
 
-## Honest live-smoke flags (không fake)
+## Honest real-smoke flags
 
 | Area | Status |
 | --- | --- |
-| TikTok thật (TikTokLive + LIVE Manager selector) | **Chưa test** — worker/registry có stub + unit; selector pack chưa validate trên live thật |
-| Gemini Web thật | **Chưa test** — `LlmProviderManager` / worker có; không claim production login |
-| Khepree production (PKCE + lease key pin) | **Chưa smoke** — client + fail-closed có; signing key production chưa pin |
-| Windows clean install / Squirrel installer | **Chưa test** |
-| Selector pack TikTok LIVE Manager | **Chưa validate** — foundation pack còn selectors rỗng/thiếu |
+| TikTokLive thật (3 account concurrent) | **REAL_SMOKE_PENDING** — checklist: `docs/REAL_SMOKE_TEST.md` |
+| LIVE Manager selector pack trên UI thật | **REAL_SMOKE_PENDING** — foundation pack còn selectors mỏng |
+| Gemini Web login / generate thật | **REAL_SMOKE_PENDING** |
+| Khepree production lease key pin | **REAL_SMOKE_PENDING** |
+| Windows clean install / Squirrel | **NOT_IMPLEMENTED** / FOUNDATION_ONLY config |
+
+Operator: `npm run test:smoke:demo` (CI) vs `KHEPREE_REAL_SMOKE=1 npm run test:smoke:real` (manual).
+
+---
+
+## Must-record areas (Prompt 10)
+
+| Feature | Status | Evidence |
+| --- | --- | --- |
+| Multi-account runtime | **IMPLEMENTED** | `MultiLiveRuntimeManager` → `Map<accountId, LiveRuntime>`; `tests/multi-live/*` |
+| TikTok per-account worker | **REAL_SMOKE_PENDING** | `TikTokConnectorRegistry` + `workers/tiktok_worker`; stub Vitest only |
+| LIVE Manager per-account | **REAL_SMOKE_PENDING** | `LiveManagerRegistry` + Playwright profiles; stub Vitest only |
+| AI scheduler | **IMPLEMENTED** | `AiRequestScheduler`; `tests/llm-scheduler/fairness.test.ts` |
+| Session lifecycle / epoch / crash recovery | **IMPLEMENTED** | Orchestrator generation + `LiveSessionRecoveryService`; session-epoch + session-recovery tests |
+| Approval session isolation | **IMPLEMENTED** | `ApprovalEngine` requires `sessionId`; expire on stop; `tests/approval/session-binding.test.ts` |
+| Cross-source event dedupe | **IMPLEMENTED** | `LiveEventDeduplicator` in `LiveRuntime.publishEvent`; `tests/events/cross-source-dedupe.test.ts` |
+| TTS | **IMPLEMENTED** | Windows SAPI `WindowsSapiTtsProvider` → WAV; REAL_SMOKE_PENDING on operator machines without SAPI voices |
+| Media session | **IMPLEMENTED** | `MediaSession` / `VoiceMediaSession` / `MediaSessionFactory.create(accountId)`; schema `media_profiles` v4 |
+| Human takeover | **IMPLEMENTED** | `OperatorControlService` + F8/app-local; `tests/operator/takeover.test.ts` |
+| Resource monitoring | **IMPLEMENTED** | `SystemResourceMonitor` (CPU delta + RAM + optional nvidia-smi); ResourceGovernor uses cache |
+| Avatar | **NOT_IMPLEMENTED** | `isAvatarReady()` always false; no MuseTalk |
+| Virtual camera | **NOT_IMPLEMENTED** | Readiness stub false |
+| Virtual audio | **NOT_IMPLEMENTED** | `LocalPreviewOutput` speakers only; VirtualAudioOutput deferred |
 
 ---
 
 ## AppContainer wiring (truth)
 
-`src/main/app-container.ts` **đang** gắn:
+`src/main/app-container.ts` gắn:
 
 | Service | Notes |
 | --- | --- |
-| SQLite + repositories | products, events, approvals, sessions, tiktok_accounts, account_live_settings (schema v3+) |
-| `MultiLiveRuntimeManager` | Per-account `LiveRuntime` |
-| `TikTokConnectorRegistry` | Per-account worker process |
-| `LiveManagerRegistry` | Per-account Playwright observer/profile |
-| `LlmProviderManager` + `AiRequestScheduler` | Gemini preferred path + fair queue |
-| `CommentFeedService` | Per-account buffers |
-| `LiveCapacityService` + `ResourceGovernor` | License ≠ hardware |
-| `KhepreeAccessService` + heartbeat | Fail-closed `assertProductAccess` |
+| SQLite + repositories | accounts, settings, sessions, events, approvals, products, **media_profiles (v4)** |
+| `MultiLiveRuntimeManager` | Per-account `LiveRuntime` + batch start/stop |
+| `TikTokConnectorRegistry` / `LiveManagerRegistry` | Per-account |
+| `LlmProviderManager` + `AiRequestScheduler` | Fair queue + stale discard |
+| `MediaSessionFactory` | Voice TTS per account (not Mock in production path) |
+| `OperatorControlService` | Takeover / emergency |
+| `CommentFeedService` + `AppEventHub` | Scoped snapshots + realtime events |
+| `LiveCapacityService` + `OsResourceGovernor` + `SystemResourceMonitor` | License ≠ hardware |
+| `KhepreeAccessService` + heartbeat | Fail-closed |
 | `LiveSessionRecoveryService` | Startup crash recovery (no auto-resume) |
-| `MockMediaProvider` | Wired; TTS/avatar chưa |
 
-`focusedAccountId` = **UI navigation only** — không route event backend.
+`focusedAccountId` = **UI navigation only**.
 
 ---
 
@@ -56,105 +78,79 @@ Nguồn sự thật: **source code hiện tại** (không phải bản foundatio
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Electron shell + preload typed API | IMPLEMENTED | sandbox / contextIsolation |
-| Single-instance + `khepreelivestreamai://` | IMPLEMENTED | LIVE_SMOKE_PENDING OAuth |
-| IPC account-aware | IMPLEMENTED | start/stop/product/approvals/TikTok/LM require `accountId` |
-| SQLite + schema migrations | IMPLEMENTED | `app_meta.schema.version`; sessions `status` v3 |
-| Vitest suite + CI | IMPLEMENTED | `npm test`; `.github/workflows/ci.yml` |
-| Foundation static check | IMPLEMENTED | `npm run test:foundation` |
+| Electron + typed preload | IMPLEMENTED | |
+| Account-aware IPC | IMPLEMENTED | |
+| Schema migrations | IMPLEMENTED | Current `CURRENT_SCHEMA_VERSION = 4` |
+| App event channel | IMPLEMENTED | `APP_EVENT` + coalesced sync; slow full fallback |
+| Batch start ready / stop all | IMPLEMENTED | Main-process; renderer không loop startLive |
+| Vitest + CI | IMPLEMENTED | Includes smoke gate |
+| Real smoke harness | IMPLEMENTED | Docs + gated script; results local-only |
 
 ## Licensing (Khepree)
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Catalog identity + access key | IMPLEMENTED | `livestream_ai.access` |
-| Capacity keys (convention) | PARTIAL | Client: `multi_live_enabled`, `max_tiktok_accounts`, `max_concurrent_lives` — **platform chưa seed**; fail-closed defaults |
-| PKCE / lease / heartbeat | PARTIAL | LIVE_SMOKE_PENDING |
-| Dev mock limits | IMPLEMENTED | Explicit 5 lives / 10 accounts |
-| Enforce startLive + createAccount caps | IMPLEMENTED | Typed license vs hardware errors |
+| Access key + fail-closed start | IMPLEMENTED | |
+| Capacity feature keys | PARTIAL | Client convention; platform seed pending |
+| PKCE / lease / heartbeat | PARTIAL | **REAL_SMOKE_PENDING** production pin |
+| Dev mock limits | IMPLEMENTED | |
 
-## Multi-live core
-
-| Feature | Status | Notes |
-| --- | --- | --- |
-| TikTokAccount + profileKey | IMPLEMENTED | Immutable `tt_<hex>` |
-| Per-account LiveRuntime | IMPLEMENTED | Isolated bus/orchestrator/approvals |
-| Concurrent lives + stop one / stop all | IMPLEMENTED | Tested |
-| Cross-account event isolation | IMPLEMENTED | 100×3 flood test |
-| Per-account product selection | IMPLEMENTED | A→Z leaves B on Y |
-| Comment feed multi-account | IMPLEMENTED | Per-account cap 300 |
-| Approval cross-account reject | IMPLEMENTED | `APPROVAL_ACCOUNT_MISMATCH` |
-| TikTok connector registry | IMPLEMENTED | Stub workers in tests; LIVE_SMOKE_PENDING thật |
-| LIVE Manager registry | IMPLEMENTED | Stub observers in tests; LIVE_SMOKE_PENDING thật |
-| Session crash recovery | IMPLEMENTED | `CRASH_RECOVERED`; no auto-resume |
-| AI request scheduler | IMPLEMENTED | Fairness + stale cancel |
-| ResourceGovernor | PARTIAL | RAM/CPU counts; GPU UNKNOWN; no auto-stop |
-| Live Center UI | IMPLEMENTED | Metrics, cards, queue, wizard, run/stop ready |
-| Account detail tabs | PARTIAL | Basic sections; not full analytics |
-
-## AI / LLM
+## AI / LLM / Media
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Mock LLM | IMPLEMENTED | Dev |
-| Gemini worker + provider manager | PARTIAL | LIVE_SMOKE_PENDING |
-| Sales brain structured parse | PARTIAL | Schema + hallucination guards |
-| Fallback script brain | PARTIAL | Phase FALLBACK_SCRIPT wired |
-| Avatar / TTS / virtual camera | NOT_IMPLEMENTED | Media mock only |
+| Mock LLM | IMPLEMENTED | |
+| Gemini worker path | REAL_SMOKE_PENDING | Wired; default prefs may be mock until operator connects |
+| Sales brain + policy guard | PARTIAL | Grounding from Product DNA |
+| Fallback script | PARTIAL | When Gemini degraded |
+| TTS + local preview | IMPLEMENTED | Windows SAPI; Voice UI tab |
+| Avatar / MuseTalk | NOT_IMPLEMENTED | |
+| Virtual camera / virtual audio | NOT_IMPLEMENTED | |
 
 ## TikTok
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| TikTokLive Python worker | PARTIAL | LIVE_SMOKE_PENDING |
-| Connect/disconnect IPC + UI | PARTIAL | Per focused account panels |
-| Comment ingest → bus → feed | PARTIAL | Path wired; LIVE_SMOKE_PENDING |
-| LIVE Manager Playwright | PARTIAL | Registry wired; selectors LIVE_SMOKE_PENDING |
-| Order / violation scan | FOUNDATION_ONLY | Selector packs incomplete |
-| Viewer count / revenue UI | NOT_IMPLEMENTED | Intentionally no fake numbers |
+| Worker registry | REAL_SMOKE_PENDING | |
+| LIVE Manager registry | REAL_SMOKE_PENDING | |
+| Comment → bus → feed | REAL_SMOKE_PENDING | Path + isolation tested with stubs |
+| Order / violation | FOUNDATION_ONLY | Selectors incomplete |
+| Fake revenue UI | NOT_IMPLEMENTED | Intentional |
 
-## Product
-
-| Feature | Status | Notes |
-| --- | --- | --- |
-| Product DNA schema + CRUD IPC | PARTIAL | Richer form than early foundation |
-| Import helpers | PARTIAL | CSV/paste helpers; LIVE_SMOKE_PENDING UX depth |
-| Per-account current product | IMPLEMENTED | |
-
-## UX
+## Product / UX
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| VI/EN i18n | IMPLEMENTED | No hardcoded bilingual in components |
-| Onboarding + Help | IMPLEMENTED | |
-| Error dialog + toast | IMPLEMENTED | |
-| Readiness checklist | IMPLEMENTED | Still useful; Live Center is primary overview |
-| Live Center + Account Detail | IMPLEMENTED | |
+| Product DNA CRUD | IMPLEMENTED | |
+| Live Center + Account Detail | IMPLEMENTED | Takeover banner, emergency stop |
+| Voice settings page | IMPLEMENTED | Replaces Coming Soon on avatar tab |
+| Script / Logs tabs | FOUNDATION_ONLY | Coming Soon placeholders |
+| VI/EN i18n | IMPLEMENTED | |
 
-## Commercial / reliability
+## Commercial
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Crash session recovery | IMPLEMENTED | DB stale sessions |
-| App dispose (runtimes/scheduler/workers) | PARTIAL | `AppContainer.dispose` wired; full orphan process assert limited in CI |
-| Installer / code signing / auto-update | NOT_IMPLEMENTED / FOUNDATION_ONLY | Squirrel config exists |
-| Production release claim | NOT_IMPLEMENTED | Milestone 0.2.x only |
+| Production-ready claim | **NOT_IMPLEMENTED** | Dev milestone only |
+| Installer / signing / auto-update | FOUNDATION_ONLY / NOT_IMPLEMENTED | |
 
 ---
 
-## Test map (release blockers)
+## Test map (automated)
 
-| Blocker | Covered by |
+| Area | Test |
 | --- | --- |
-| 100 events A/B/C zero cross-contamination | `tests/multi-live/cross-account-events.test.ts` |
-| Comment A ∉ feed B | `tests/comments/feed-isolation.test.ts` |
-| Approval A not resolve via B | `tests/approval/cross-account.test.ts` |
-| Product A/X B/Y → A→Z B stays Y | `tests/multi-live/runtime-isolation.test.ts` + DB self-check |
-| TikTok workers independent | `tests/tiktok/connector-isolation.test.ts` (stub) |
-| LIVE Manager observers independent | same (stub) |
-| Crash session recovery | `tests/session-recovery/crash.test.ts` |
-| AI scheduler fairness + stale | `tests/llm-scheduler/fairness.test.ts` |
-| Stop B → A/C continue; stopAll | `tests/multi-live/stop-lifecycle.test.ts` |
-| Dispose | `tests/multi-live/dispose-capacity.test.ts` |
+| Cross-account events | `tests/multi-live/cross-account-events.test.ts` |
+| Stop B leave A/C | `tests/multi-live/stop-lifecycle.test.ts` |
+| Batch start/stop | `tests/multi-live/batch-start.test.ts` |
+| Session epoch / stale AI | `tests/session-epoch/stale-ai-result.test.ts` |
+| Approval session bind | `tests/approval/session-binding.test.ts` |
+| Cross-source dedupe | `tests/events/cross-source-dedupe.test.ts` |
+| App events | `tests/events/app-event-channel.test.ts` |
+| Resources | `tests/resources/system-resource-monitor.test.ts` |
+| Media queues | `tests/media/per-account-voice.test.ts` |
+| Takeover | `tests/operator/takeover.test.ts` |
+| Crash recovery | `tests/session-recovery/crash.test.ts` |
+| Scheduler fairness | `tests/llm-scheduler/fairness.test.ts` |
 
-Self-check scripts under `src/**/**self-check.ts` **vẫn giữ** cho `test:legacy:*` và foundation-era assert helpers.
+Manual: `docs/REAL_SMOKE_TEST.md`.

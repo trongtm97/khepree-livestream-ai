@@ -1,8 +1,16 @@
 /**
  * Hardware / process capacity — separate from Khepree license limits.
  * Never invent GPU/VRAM numbers; return UNKNOWN when not measurable.
+ * CPU UNKNOWN does not block start — only numeric thresholds do.
  */
-import os from "node:os";
+import type { GpuSnapshot, ResourceMetric } from "../../shared/system-resources";
+import {
+  createSystemResourceMonitor,
+  type SystemResourceMonitor
+} from "./system-resource-monitor";
+
+export type { ResourceMetric } from "../../shared/system-resources";
+export type { GpuSnapshot } from "../../shared/system-resources";
 
 export type HardwareBlockerCode =
   | "RAM_LOW"
@@ -20,8 +28,6 @@ export type CapacityWarningCode =
 /** Future media tiers — GPU-aware selection later; not enforced this task. */
 export type MediaTierHint = "FULL_AVATAR" | "VOICE_ONLY" | "ASSISTANT_NO_AVATAR";
 
-export type ResourceMetric = number | "UNKNOWN";
-
 export type ResourceSnapshot = {
   checkedAt: string;
   cpuLoadPercent: ResourceMetric;
@@ -32,7 +38,7 @@ export type ResourceSnapshot = {
   activeBrowserContexts: number;
   aiQueueLength: number;
   /** GPU adapter: UNKNOWN when not queried / unavailable. Never fake VRAM. */
-  gpu: "UNKNOWN" | { available: boolean; vramFreeMb: ResourceMetric };
+  gpu: GpuSnapshot;
 };
 
 export type HardwareEvaluation = {
@@ -73,10 +79,12 @@ export type ResourceGovernorOptions = {
    * Undefined = no hardware concurrency cap (license still applies separately).
    */
   maxHardwareRuntimes?: number;
+  /** Injected monitor (tests). Production creates one. */
+  monitor?: SystemResourceMonitor;
 };
 
 const DEFAULTS: Required<
-  Omit<ResourceGovernorOptions, "maxHardwareRuntimes">
+  Omit<ResourceGovernorOptions, "maxHardwareRuntimes" | "monitor">
 > & { maxHardwareRuntimes?: number } = {
   ramWarnMb: 768,
   ramBlockMb: 384,
@@ -87,65 +95,52 @@ const DEFAULTS: Required<
   maxHardwareRuntimes: undefined
 };
 
-function readOsMetrics(): {
-  cpuLoadPercent: ResourceMetric;
-  ramAvailableMb: ResourceMetric;
-  ramUsedPercent: ResourceMetric;
-} {
-  try {
-    const total = os.totalmem();
-    const free = os.freemem();
-    const ramAvailableMb = Math.floor(free / (1024 * 1024));
-    const ramUsedPercent =
-      total > 0 ? Math.min(100, Math.round(((total - free) / total) * 100)) : "UNKNOWN";
-
-    // loadavg is often [0,0,0] on Windows — treat as UNKNOWN there.
-    const loads = os.loadavg();
-    const cores = Math.max(1, os.cpus()?.length ?? 1);
-    const oneMin = loads[0] ?? Number.NaN;
-    const cpuLoadPercent =
-      process.platform === "win32" || !Number.isFinite(oneMin)
-        ? ("UNKNOWN" as const)
-        : Math.min(100, Math.round((oneMin / cores) * 100));
-
-    return { cpuLoadPercent, ramAvailableMb, ramUsedPercent };
-  } catch {
-    return {
-      cpuLoadPercent: "UNKNOWN",
-      ramAvailableMb: "UNKNOWN",
-      ramUsedPercent: "UNKNOWN"
-    };
-  }
-}
-
 function recommendMediaTiers(gpu: ResourceSnapshot["gpu"]): MediaTierHint[] {
   if (gpu === "UNKNOWN") {
     // Without GPU signal, prefer non-avatar tiers (hint only).
     return ["ASSISTANT_NO_AVATAR", "VOICE_ONLY"];
   }
   if (!gpu.available) return ["ASSISTANT_NO_AVATAR"];
-  if (gpu.vramFreeMb === "UNKNOWN") return ["VOICE_ONLY", "ASSISTANT_NO_AVATAR"];
-  if (gpu.vramFreeMb < 2048) return ["VOICE_ONLY", "ASSISTANT_NO_AVATAR"];
+  const free = gpu.vramFreeMb;
+  if (free === undefined || free === "UNKNOWN") return ["VOICE_ONLY", "ASSISTANT_NO_AVATAR"];
+  if (free < 2048) return ["VOICE_ONLY", "ASSISTANT_NO_AVATAR"];
   return ["FULL_AVATAR", "VOICE_ONLY", "ASSISTANT_NO_AVATAR"];
 }
 
-/** Production governor — real OS RAM; CPU/GPU may be UNKNOWN. */
+export type OsResourceGovernor = ResourceGovernor & {
+  readonly monitor: SystemResourceMonitor;
+  start(): void;
+  stop(): void;
+};
+
+/** Production governor — SystemResourceMonitor cache; UNKNOWN never blocks CPU. */
 export function createOsResourceGovernor(
   opts: ResourceGovernorOptions = {}
-): ResourceGovernor {
-  const cfg = { ...DEFAULTS, ...opts };
+): OsResourceGovernor {
+  const { monitor: injected, ...rest } = opts;
+  const cfg = { ...DEFAULTS, ...rest };
+  const monitor = injected ?? createSystemResourceMonitor();
 
-  return {
+  const governor: OsResourceGovernor = {
+    monitor,
+    start() {
+      monitor.start();
+    },
+    stop() {
+      monitor.stop();
+    },
     snapshot(counts) {
-      const osMetrics = readOsMetrics();
+      const m = monitor.getSnapshot();
       return {
-        checkedAt: new Date().toISOString(),
-        ...osMetrics,
+        checkedAt: m.checkedAt,
+        cpuLoadPercent: m.cpuLoadPercent,
+        ramAvailableMb: m.ramAvailableMb,
+        ramUsedPercent: m.ramUsedPercent,
         activeRuntimes: counts.activeRuntimes,
         activeTikTokWorkers: counts.activeTikTokWorkers,
         activeBrowserContexts: counts.activeBrowserContexts,
         aiQueueLength: counts.aiQueueLength,
-        gpu: "UNKNOWN"
+        gpu: m.gpu
       };
     },
 
@@ -159,6 +154,7 @@ export function createOsResourceGovernor(
         else if (snap.ramAvailableMb < cfg.ramWarnMb) warnings.push("RAM_PRESSURE");
       }
 
+      // CPU UNKNOWN → skip (do not block start).
       if (typeof snap.cpuLoadPercent === "number") {
         if (snap.cpuLoadPercent >= cfg.cpuBlockPercent) blockers.push("CPU_HIGH");
         else if (snap.cpuLoadPercent >= cfg.cpuWarnPercent) warnings.push("CPU_PRESSURE");
@@ -181,6 +177,8 @@ export function createOsResourceGovernor(
       };
     }
   };
+
+  return governor;
 }
 
 /**
@@ -191,6 +189,7 @@ export function createMockResourceGovernor(input: {
   maxRuntimes: number;
   ramAvailableMb?: number | "UNKNOWN";
   cpuLoadPercent?: number | "UNKNOWN";
+  gpu?: GpuSnapshot;
 }): ResourceGovernor {
   return {
     snapshot(counts) {
@@ -203,7 +202,7 @@ export function createMockResourceGovernor(input: {
         activeTikTokWorkers: counts.activeTikTokWorkers,
         activeBrowserContexts: counts.activeBrowserContexts,
         aiQueueLength: counts.aiQueueLength,
-        gpu: "UNKNOWN"
+        gpu: input.gpu ?? "UNKNOWN"
       };
     },
     evaluateStart(counts) {
@@ -214,6 +213,9 @@ export function createMockResourceGovernor(input: {
       }
       if (typeof input.ramAvailableMb === "number" && input.ramAvailableMb < 384) {
         blockers.push("RAM_LOW");
+      }
+      if (typeof input.cpuLoadPercent === "number" && input.cpuLoadPercent >= 97) {
+        blockers.push("CPU_HIGH");
       }
       return {
         blockers,

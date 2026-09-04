@@ -1,5 +1,6 @@
 import type { AccountTikTokState } from "./tiktok-contracts";
 import type { AccountLiveManagerState } from "./live-manager-contracts";
+import type { OperatorControlMode } from "./operator-control";
 
 export type AutomationMode =
   | "MANUAL_ASSIST"
@@ -95,6 +96,8 @@ export interface AccountLiveSnapshot {
   currentProductId?: string;
   pendingApprovalCount: number;
   health: RuntimeHealth;
+  /** Operator vs AI — HUMAN_TAKEOVER mutes speak without stopping TikTok. */
+  operatorMode?: OperatorControlMode;
   /** Per-account TikTok connector state when registry has one. */
   tiktok?: AccountTikTokState;
   /** Per-account LIVE Manager browser state when registry has one. */

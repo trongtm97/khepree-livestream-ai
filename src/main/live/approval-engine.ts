@@ -27,6 +27,12 @@ export interface ApprovalEngineOptions {
   confidenceThreshold: number;
 }
 
+/** Required provenance for live approvals. */
+export type ApprovalEnqueueContext = {
+  accountId: string;
+  sessionId: string;
+};
+
 export class ApprovalEngine {
   private readonly items = new Map<string, ApprovalItem>();
 
@@ -36,13 +42,25 @@ export class ApprovalEngine {
     return this.options.supervisedDelayMs;
   }
 
-  enqueue(proposal: ActionProposal, mode: AutomationMode): ApprovalItem {
+  enqueue(
+    proposal: ActionProposal,
+    mode: AutomationMode,
+    context: ApprovalEnqueueContext
+  ): ApprovalItem {
+    const accountId = context.accountId.trim();
+    const sessionId = context.sessionId.trim();
+    if (!accountId || !sessionId) {
+      throw new Error("APPROVAL_SESSION_REQUIRED");
+    }
+
     const now = Date.now();
     const item: ApprovalItem = {
       id: randomUUID(),
       proposal,
       status: "PENDING",
-      createdAt: new Date(now).toISOString()
+      createdAt: new Date(now).toISOString(),
+      accountId,
+      sessionId
     };
 
     if (this.canAutoApprove(proposal, mode)) {
@@ -58,14 +76,44 @@ export class ApprovalEngine {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
+  /** Expire all PENDING approvals for a live session (stop live). */
+  expireSession(sessionId: string, now = Date.now()): ApprovalItem[] {
+    const sid = sessionId.trim();
+    if (!sid) return [];
+    const expired: ApprovalItem[] = [];
+    const resolvedAt = new Date(now).toISOString();
+    for (const item of this.items.values()) {
+      if (item.status !== "PENDING" || item.sessionId !== sid) continue;
+      item.status = "EXPIRED";
+      item.resolvedAt = resolvedAt;
+      item.autoApproveAt = undefined;
+      expired.push(item);
+    }
+    return expired;
+  }
+
   resolve(
     id: string,
     decision: "approve" | "reject",
-    editedSpeech?: string
+    editedSpeech?: string,
+    activeSessionId?: string
   ): ApprovalItem {
     const item = this.items.get(id);
-    if (!item || item.status !== "PENDING") {
-      throw new Error("Approval item not pending");
+    if (!item) {
+      throw new Error("APPROVAL_NOT_PENDING");
+    }
+    if (item.status === "EXPIRED") {
+      throw new Error("APPROVAL_SESSION_EXPIRED");
+    }
+    if (item.status !== "PENDING") {
+      throw new Error("APPROVAL_NOT_PENDING");
+    }
+    if (
+      activeSessionId !== undefined &&
+      item.sessionId &&
+      item.sessionId !== activeSessionId
+    ) {
+      throw new Error("APPROVAL_SESSION_EXPIRED");
     }
     if (
       editedSpeech !== undefined &&
@@ -83,7 +131,7 @@ export class ApprovalEngine {
   cancelAutoApprove(id: string): ApprovalItem {
     const item = this.items.get(id);
     if (!item || item.status !== "PENDING") {
-      throw new Error("Approval item not pending");
+      throw new Error("APPROVAL_NOT_PENDING");
     }
     item.autoApproveAt = undefined;
     return item;
@@ -104,22 +152,44 @@ export class ApprovalEngine {
   }
 
   /** Stop all pending countdowns (used when operator disables auto). */
-  cancelAllAutoApprovals(): number {
-    let n = 0;
+  cancelAllAutoApprovals(): ApprovalItem[] {
+    const out: ApprovalItem[] = [];
     for (const item of this.items.values()) {
       if (item.status === "PENDING" && item.autoApproveAt) {
         item.autoApproveAt = undefined;
-        n += 1;
+        out.push(item);
       }
     }
-    return n;
+    return out;
   }
 
-  collectTimedApprovals(now = Date.now()): ApprovalItem[] {
+  /** Expire all PENDING approvals (takeover / emergency — do not speak them later). */
+  expireAllPending(now = Date.now()): ApprovalItem[] {
+    const out: ApprovalItem[] = [];
+    const resolvedAt = new Date(now).toISOString();
+    for (const item of this.items.values()) {
+      if (item.status === "PENDING") {
+        item.status = "EXPIRED";
+        item.resolvedAt = resolvedAt;
+        item.autoApproveAt = undefined;
+        out.push(item);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Auto-approve due PENDING items for the active live session only.
+   * Never promotes approvals from a prior session.
+   */
+  collectTimedApprovals(activeSessionId: string, now = Date.now()): ApprovalItem[] {
+    const sid = activeSessionId.trim();
+    if (!sid) return [];
     const due: ApprovalItem[] = [];
     for (const item of this.items.values()) {
       if (
         item.status === "PENDING" &&
+        item.sessionId === sid &&
         item.autoApproveAt &&
         Date.parse(item.autoApproveAt) <= now
       ) {
@@ -189,5 +259,24 @@ export function assertApprovalEngineContract(): void {
       "SUPERVISED_AUTO"
     );
     if (ok) throw new Error(`${tag} must never auto-approve`);
+  }
+
+  const item = engine.enqueue(
+    {
+      id: "1",
+      createdAt: new Date().toISOString(),
+      kind: "SPEAK",
+      speech: "hi",
+      confidence: 0.99,
+      reason: "t",
+      riskTags: []
+    },
+    "MANUAL_ASSIST",
+    { accountId: "acc", sessionId: "sess" }
+  );
+  if (!item.accountId || !item.sessionId) throw new Error("enqueue must stamp provenance");
+  const expired = engine.expireSession("sess");
+  if (expired.length !== 1 || expired[0]?.status !== "EXPIRED") {
+    throw new Error("expireSession must mark PENDING as EXPIRED");
   }
 }

@@ -1,5 +1,9 @@
 import { app, ipcMain } from "electron";
 import { IPC, type AppSnapshot, type MultiLiveSnapshot } from "../../shared/ipc";
+import type {
+  LiveStartReadyBatchResult,
+  LiveStopAllBatchResult
+} from "../../shared/live-batch";
 import type { LlmProviderId } from "../../shared/gemini-contracts";
 import { normalizeAppLocale, type AppLocale } from "../../shared/locale";
 import type { OnboardingState } from "../../shared/onboarding";
@@ -73,6 +77,17 @@ export function registerIpc(container: AppContainer): void {
       maxConcurrentLives: container.capacity.getLicenseLimits().maxConcurrentLives,
       licenseLimits: container.capacity.getLicenseLimits(),
       pendingApprovals: container.multiLive.listAllPendingApprovals().slice(0, 40),
+      resources: (() => {
+        const snap = container.getResourceSnapshot();
+        return {
+          checkedAt: snap.checkedAt,
+          cpuLoadPercent: snap.cpuLoadPercent,
+          ramAvailableMb: snap.ramAvailableMb,
+          ramUsedPercent: snap.ramUsedPercent,
+          gpu: snap.gpu
+        };
+      })(),
+      operatorControl: container.multiLive.getOperatorControlSnapshot(),
       sessionRecovery: (() => {
         const report = container.getSessionRecoveryReport();
         if (report.recoveredCount <= 0) return undefined;
@@ -103,6 +118,24 @@ export function registerIpc(container: AppContainer): void {
     };
   });
 
+  ipcMain.handle(IPC.COMMENTS_SNAPSHOT, async (_event, rawAccountId: unknown) => {
+    if (rawAccountId === undefined || rawAccountId === null || rawAccountId === "") {
+      return container.comments.getSnapshot();
+    }
+    const id = accountId(container, rawAccountId);
+    return container.comments.getSnapshotForAccount(id);
+  });
+
+  ipcMain.handle(IPC.HEALTH_SNAPSHOT, async () => {
+    const focusedId = container.multiLive.focusedId;
+    return [
+      await container.llm.health(),
+      await container.tiktok.health(focusedId),
+      await container.liveManager.health(focusedId),
+      await container.media.health()
+    ];
+  });
+
   ipcMain.handle(IPC.SETTINGS_SET_LOCALE, async (_event, locale: AppLocale) => {
     const next = normalizeAppLocale(locale);
     container.settings.setLocale(next);
@@ -122,6 +155,16 @@ export function registerIpc(container: AppContainer): void {
   ipcMain.handle(IPC.LIVE_STOP, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
     container.multiLive.stopLive(id);
+  });
+
+  ipcMain.handle(IPC.LIVE_START_READY_BATCH, async (): Promise<LiveStartReadyBatchResult> => {
+    return container.multiLive.startReadyLives({
+      isTikTokConnected: (id) => container.tiktok.getState(id)?.connected === true
+    });
+  });
+
+  ipcMain.handle(IPC.LIVE_STOP_ALL, async (): Promise<LiveStopAllBatchResult> => {
+    return container.multiLive.stopAll();
   });
 
   ipcMain.handle(
@@ -185,6 +228,7 @@ export function registerIpc(container: AppContainer): void {
       throw new Error(code);
     }
     container.products.save(normalized);
+    container.appEvents.emit("PRODUCTS_CHANGED");
   });
 
   ipcMain.handle(IPC.PRODUCT_DELETE, async (_event, productId: unknown) => {
@@ -199,6 +243,7 @@ export function registerIpc(container: AppContainer): void {
         container.multiLive.setCurrentProduct(snap.accountId, undefined);
       }
     }
+    container.appEvents.emit("PRODUCTS_CHANGED");
   });
 
   ipcMain.handle(
@@ -211,6 +256,7 @@ export function registerIpc(container: AppContainer): void {
           ? undefined
           : String(productId);
       container.multiLive.setCurrentProduct(id, pid);
+      container.appEvents.emit("LIVE_UPDATED", id);
     }
   );
 
@@ -224,6 +270,7 @@ export function registerIpc(container: AppContainer): void {
           ? undefined
           : String(productId);
       container.multiLive.setCurrentProduct(id, pid);
+      container.appEvents.emit("LIVE_UPDATED", id);
     }
   );
 
@@ -301,24 +348,35 @@ export function registerIpc(container: AppContainer): void {
   ipcMain.handle(IPC.GEMINI_HEALTH, async () => container.llm.getPublicState());
   ipcMain.handle(IPC.GEMINI_CONNECT, async () => {
     container.khepree.assertProductAccess();
-    return container.llm.connect();
+    const state = await container.llm.connect();
+    container.appEvents.emit("GEMINI_STATE_CHANGED");
+    return state;
   });
-  ipcMain.handle(IPC.GEMINI_DISCONNECT, async () => container.llm.disconnect());
+  ipcMain.handle(IPC.GEMINI_DISCONNECT, async () => {
+    const state = await container.llm.disconnect();
+    container.appEvents.emit("GEMINI_STATE_CHANGED");
+    return state;
+  });
   ipcMain.handle(IPC.GEMINI_REAUTH, async () => {
     container.khepree.assertProductAccess();
-    return container.llm.reauth();
+    const state = await container.llm.reauth();
+    container.appEvents.emit("GEMINI_STATE_CHANGED");
+    return state;
   });
   ipcMain.handle(IPC.GEMINI_SET_PROVIDER, async (_event, id: LlmProviderId) => {
     if (id !== "mock" && id !== "gemini-web") throw new Error("LLM_PROVIDER_INVALID");
     await container.llm.setPreferredProvider(id);
+    container.appEvents.emit("GEMINI_STATE_CHANGED");
     return container.llm.getPublicState();
   });
   ipcMain.handle(IPC.GEMINI_ACK_DEMO, async () => {
     container.llm.acknowledgeDemoMode();
+    container.appEvents.emit("GEMINI_STATE_CHANGED");
     return container.llm.getPublicState();
   });
   ipcMain.handle(IPC.GEMINI_SET_MODEL, async (_event, model: string) => {
     await container.llm.setModel(model);
+    container.appEvents.emit("GEMINI_STATE_CHANGED");
     return container.llm.getPublicState();
   });
   ipcMain.handle(IPC.GEMINI_LIST_MODELS, async () => container.llm.listModels());
@@ -334,20 +392,26 @@ export function registerIpc(container: AppContainer): void {
     IPC.GEMINI_SAVE_SESSION,
     async (_event, secure1PSID: string, secure1PSIDTS?: string) => {
       container.khepree.assertProductAccess();
-      return container.llm.saveManualSession(secure1PSID, secure1PSIDTS);
+      const state = await container.llm.saveManualSession(secure1PSID, secure1PSIDTS);
+      container.appEvents.emit("GEMINI_STATE_CHANGED");
+      return state;
     }
   );
   ipcMain.handle(IPC.GEMINI_CLEAR_SESSION, async () => {
     container.khepree.assertProductAccess();
-    return container.llm.clearManualSession();
+    const state = await container.llm.clearManualSession();
+    container.appEvents.emit("GEMINI_STATE_CHANGED");
+    return state;
   });
 
   ipcMain.handle(IPC.KHEPREE_LOGIN, async () => {
     await container.khepree.startLogin();
+    container.appEvents.emit("LICENSE_CHANGED");
   });
 
   ipcMain.handle(IPC.KHEPREE_LOGOUT, async () => {
     await container.khepree.logout();
+    container.appEvents.emit("LICENSE_CHANGED");
   });
 
   ipcMain.handle(IPC.KHEPREE_OPEN_PRODUCT, async () => {
@@ -372,34 +436,46 @@ export function registerIpc(container: AppContainer): void {
   ipcMain.handle(IPC.TIKTOK_CONNECT, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
     focusAccount(container, id);
-    return container.tiktok.connect(id);
+    const state = await container.tiktok.connect(id);
+    container.appEvents.emit("TIKTOK_STATE_CHANGED", id);
+    return state;
   });
 
   ipcMain.handle(IPC.TIKTOK_DISCONNECT, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
-    return container.tiktok.disconnect(id);
+    const state = await container.tiktok.disconnect(id);
+    container.appEvents.emit("TIKTOK_STATE_CHANGED", id);
+    return state;
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_OPEN, async (_event, rawAccountId: unknown) => {
     container.khepree.assertProductAccess();
     const id = accountId(container, rawAccountId);
     focusAccount(container, id);
-    return container.liveManager.open(id);
+    const state = await container.liveManager.open(id);
+    container.appEvents.emit("LIVE_MANAGER_STATE_CHANGED", id);
+    return state;
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_CLOSE, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
-    return container.liveManager.close(id);
+    const state = await container.liveManager.close(id);
+    container.appEvents.emit("LIVE_MANAGER_STATE_CHANGED", id);
+    return state;
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_REFRESH, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
-    return container.liveManager.refresh(id);
+    const state = await container.liveManager.refresh(id);
+    container.appEvents.emit("LIVE_MANAGER_STATE_CHANGED", id);
+    return state;
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_DIAGNOSTIC, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
-    return container.liveManager.captureDiagnostic(id);
+    const state = await container.liveManager.captureDiagnostic(id);
+    container.appEvents.emit("LIVE_MANAGER_STATE_CHANGED", id);
+    return state;
   });
 
   ipcMain.handle(IPC.COMMENT_PIN, async (_event, rawAccountId: unknown, eventId: unknown) => {
@@ -424,5 +500,101 @@ export function registerIpc(container: AppContainer): void {
     const eid = String(eventId ?? "").trim();
     if (!eid) throw new Error("COMMENT_ID_REQUIRED");
     container.comments.markSkipped(id, eid);
+  });
+
+  ipcMain.handle(IPC.MEDIA_LIST_VOICES, async () => {
+    return container.mediaFactory.getTts().listVoices();
+  });
+
+  ipcMain.handle(IPC.MEDIA_GET_PROFILE, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    const profile = container.mediaProfiles.ensureForAccount(id);
+    const settings = container.accountLiveSettings.ensure(id);
+    if (settings.mediaProfileId !== profile.id) {
+      container.accountLiveSettings.upsert({ accountId: id, mediaProfileId: profile.id });
+    }
+    return profile;
+  });
+
+  ipcMain.handle(
+    IPC.MEDIA_SET_PROFILE,
+    async (
+      _event,
+      rawAccountId: unknown,
+      patch: { voiceId?: string | null; rate?: number } | undefined
+    ) => {
+      const id = accountId(container, rawAccountId);
+      const next = container.mediaProfiles.upsert({
+        accountId: id,
+        voiceId: patch?.voiceId === null ? undefined : patch?.voiceId,
+        rate: patch?.rate
+      });
+      container.accountLiveSettings.upsert({ accountId: id, mediaProfileId: next.id });
+      return next;
+    }
+  );
+
+  ipcMain.handle(
+    IPC.MEDIA_PREVIEW,
+    async (_event, rawAccountId: unknown, text: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const sample =
+        typeof text === "string" && text.trim()
+          ? text.trim()
+          : "Xin chào, đây là giọng thử của Khepree.";
+      await container.mediaFactory.preview(id, sample);
+    }
+  );
+
+  ipcMain.handle(IPC.MEDIA_ENGINE_STATUS, async () => {
+    const tts = container.mediaFactory.getTts();
+    const health = await tts.health();
+    let voiceCount = 0;
+    try {
+      voiceCount = (await tts.listVoices()).length;
+    } catch {
+      voiceCount = 0;
+    }
+    return {
+      providerId: tts.id,
+      status: health.status,
+      message: health.message,
+      voiceCount,
+      checkedAt: health.checkedAt
+    };
+  });
+
+  ipcMain.handle(IPC.OPERATOR_TAKEOVER, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    container.multiLive.enterTakeover(id);
+    return container.multiLive.getOperatorControlSnapshot();
+  });
+
+  ipcMain.handle(IPC.OPERATOR_EXIT_TAKEOVER, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    container.multiLive.exitTakeover(id);
+    return container.multiLive.getOperatorControlSnapshot();
+  });
+
+  ipcMain.handle(IPC.OPERATOR_TOGGLE_TAKEOVER, async (_event, rawAccountId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    container.multiLive.toggleTakeover(id);
+    return container.multiLive.getOperatorControlSnapshot();
+  });
+
+  ipcMain.handle(IPC.OPERATOR_EMERGENCY_STOP, async () => {
+    return container.multiLive.emergencyStopAllAi();
+  });
+
+  ipcMain.handle(IPC.OPERATOR_GET_STATE, async () => {
+    return container.multiLive.getOperatorControlSnapshot();
+  });
+
+  ipcMain.handle(IPC.OPERATOR_SET_HOTKEY, async (_event, raw: unknown) => {
+    const hotkey = String(raw ?? "F8");
+    container.settings.setTakeoverHotkey(hotkey);
+    container.operatorControl.setHotkey(container.settings.getTakeoverHotkey());
+    container.appEvents.emit("OPERATOR_CONTROL_CHANGED");
+    return container.operatorControl.getHotkey();
   });
 }

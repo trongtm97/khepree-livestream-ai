@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const SCHEMA_VERSION_KEY = "schema.version";
-/** Current schema version — v3 adds live_sessions.status for crash recovery. */
-export const CURRENT_SCHEMA_VERSION = 3;
+/** Current schema version — v4 adds media_profiles for per-account TTS. */
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export function openDatabase(userDataDir: string): Database.Database {
   const dataDir = path.join(userDataDir, "data");
@@ -179,6 +179,25 @@ function migrateV3LiveSessionStatus(db: Database.Database): void {
 }
 
 /**
+ * Per-account media / voice profiles (TTS). No avatar payloads.
+ */
+function migrateV4MediaProfiles(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS media_profiles (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL UNIQUE,
+      provider_id TEXT NOT NULL,
+      voice_id TEXT,
+      rate REAL NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES tiktok_accounts(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_media_profiles_account
+      ON media_profiles(account_id);
+  `);
+}
+
+/**
  * Versioned, additive migrations.
  * Legacy DBs without schema.version start at 0; v1 CREATE IF NOT EXISTS preserves rows.
  */
@@ -202,5 +221,11 @@ export function migrate(db: Database.Database): void {
   if (version < 3) {
     migrateV3LiveSessionStatus(db);
     setSchemaVersion(db, 3);
+    version = 3;
+  }
+
+  if (version < 4) {
+    migrateV4MediaProfiles(db);
+    setSchemaVersion(db, 4);
   }
 }

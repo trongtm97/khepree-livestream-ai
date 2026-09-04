@@ -1,12 +1,17 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import type { AppSnapshot } from "../../shared/ipc";
+import type { LiveStartReadyBatchResult } from "../../shared/live-batch";
+import { LIVE_BATCH_REASONS } from "../../shared/live-batch";
 import { useAppShell } from "../app/AppShellContext";
-import { accountStartBlock } from "../app/account-start-gate";
 import { AccountLiveCard } from "../components/live-center/AccountLiveCard";
 import { AddAccountWizard } from "../components/live-center/AddAccountWizard";
 import { LiveCenterMetrics } from "../components/live-center/LiveCenterMetrics";
 import { OperatorQueue, countOperatorTodos } from "../components/live-center/OperatorQueue";
+
+function countSkipped(result: LiveStartReadyBatchResult, reason: string): number {
+  return result.skipped.filter((s) => s.reasonCode === reason).length;
+}
 
 export function OverviewPage({ snapshot }: { snapshot: AppSnapshot }) {
   const { t, run, refresh, notify, setTab } = useAppShell();
@@ -36,45 +41,31 @@ export function OverviewPage({ snapshot }: { snapshot: AppSnapshot }) {
 
   const startReady = () =>
     run(async () => {
-      let started = 0;
-      let skipProduct = 0;
-      let skipTiktok = 0;
-      let skipLimit = 0;
-      let running = snapshot.lives.filter((l) => l.isRunning).length;
-      const max = snapshot.maxConcurrentLives ?? 5;
-
-      for (const live of snapshot.lives) {
-        if (live.isRunning) continue;
-        const block = accountStartBlock(live);
-        if (block === "no_product") {
-          skipProduct += 1;
-          continue;
-        }
-        if (block === "tiktok_disconnected") {
-          skipTiktok += 1;
-          continue;
-        }
-        if (running >= max) {
-          skipLimit += 1;
-          continue;
-        }
-        await window.khepreeLivestreamAI.startLive(live.accountId);
-        started += 1;
-        running += 1;
+      const result = await window.khepreeLivestreamAI.startReadyLives();
+      const parts: string[] = [
+        t("liveCenter.runAll.result.started", { count: result.started.length })
+      ];
+      const already = countSkipped(result, LIVE_BATCH_REASONS.ALREADY_RUNNING);
+      const noProduct = countSkipped(result, LIVE_BATCH_REASONS.NO_PRODUCT);
+      const noTiktok = countSkipped(result, LIVE_BATCH_REASONS.TIKTOK_DISCONNECTED);
+      const limit = countSkipped(result, LIVE_BATCH_REASONS.CAPACITY_LIMIT);
+      if (already > 0) {
+        parts.push(t("liveCenter.runAll.result.alreadyRunning", { count: already }));
       }
-
-      const parts = [t("liveCenter.runAll.result.started", { count: started })];
-      if (skipProduct > 0) {
-        parts.push(t("liveCenter.runAll.result.noProduct", { count: skipProduct }));
+      if (noProduct > 0) {
+        parts.push(t("liveCenter.runAll.result.noProduct", { count: noProduct }));
       }
-      if (skipTiktok > 0) {
-        parts.push(t("liveCenter.runAll.result.noTiktok", { count: skipTiktok }));
+      if (noTiktok > 0) {
+        parts.push(t("liveCenter.runAll.result.noTiktok", { count: noTiktok }));
       }
-      if (skipLimit > 0) {
-        parts.push(t("liveCenter.runAll.result.limit", { count: skipLimit }));
+      if (limit > 0) {
+        parts.push(t("liveCenter.runAll.result.limit", { count: limit }));
+      }
+      if (result.failed.length > 0) {
+        parts.push(t("liveCenter.runAll.result.failed", { count: result.failed.length }));
       }
       notify({
-        tone: started > 0 ? "success" : "warning",
+        tone: result.started.length > 0 ? "success" : "warning",
         title: t("liveCenter.runAll.done"),
         message: parts.join(" · ")
       });
@@ -83,14 +74,11 @@ export function OverviewPage({ snapshot }: { snapshot: AppSnapshot }) {
 
   const stopAll = () =>
     run(async () => {
-      const running = snapshot.lives.filter((l) => l.isRunning);
-      for (const live of running) {
-        await window.khepreeLivestreamAI.stopLive(live.accountId);
-      }
+      const result = await window.khepreeLivestreamAI.stopAllLives();
       notify({
         tone: "info",
         title: t("liveCenter.stopAll.done"),
-        message: t("liveCenter.stopAll.note", { count: running.length })
+        message: t("liveCenter.stopAll.note", { count: result.stopped.length })
       });
       await refresh();
     });
@@ -105,6 +93,19 @@ export function OverviewPage({ snapshot }: { snapshot: AppSnapshot }) {
         </button>
         <button type="button" className="ghost" onClick={() => void stopAll()}>
           {t("liveCenter.stopAll")}
+        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={() =>
+            void run(async () => {
+              await window.khepreeLivestreamAI.emergencyStopAllAi();
+              notify({ tone: "error", title: t("operator.emergency.done") });
+              await refresh();
+            })
+          }
+        >
+          {t("operator.emergency")}
         </button>
         <button type="button" className="ghost" onClick={() => setWizardOpen(true)}>
           <Plus size={16} /> {t("liveCenter.addAccount")}

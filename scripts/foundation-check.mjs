@@ -646,7 +646,7 @@ for (const needle of [
     failed = true;
   }
 }
-if (!connectionSrc.includes("CURRENT_SCHEMA_VERSION = 3")) {
+if (!connectionSrc.includes("CURRENT_SCHEMA_VERSION = 4")) {
   console.error("schema version must be 3 for crash recovery status column");
   failed = true;
 }

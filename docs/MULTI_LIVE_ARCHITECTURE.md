@@ -1,14 +1,15 @@
 # Multi-Live Architecture (domain slice)
 
-Status: **usable multi-live core (milestone 0.2.x)** — domain, runtime, registries, account-aware IPC, Live Center UI, capacity gates, Vitest release blockers.
+Status: **usable multi-live core + operator hardening (milestone 0.3.x)** — domain, runtime, registries, account-aware IPC, Live Center, capacity, voice sessions, takeover, Vitest blockers. **Not** a production claim.
 
 ## Goals
 
-- Support many independent TikTok seller accounts in one desktop install.
-- One TikTok account → **at most one** active livestream at a time.
-- Different accounts may livestream **concurrently** (subject to Khepree license + hardware capacity).
-- Keep secrets out of SQLite account rows: **no passwords**, **no raw cookies**.
+- Many independent TikTok seller accounts in one desktop install.
+- One TikTok account → **at most one** active livestream AI at a time.
+- Different accounts may run **concurrently** (Khepree license + hardware capacity).
+- Secrets out of SQLite account rows: **no passwords**, **no raw cookies**.
 - `focusedAccountId` is **UX navigation only** — never backend event routing.
+- Human always wins: takeover / emergency mute AI without killing TikTok/browser.
 
 ## Account model
 
@@ -19,16 +20,24 @@ Status: **usable multi-live core (milestone 0.2.x)** — domain, runtime, regist
 | `id` | Stable id (`acc_…`) |
 | `username` | Normalized `@handle` |
 | `displayName` / `label` | Operator-facing names |
-| `profileKey` | **Immutable** filesystem key → `browser-profiles/<profileKey>` |
+| `profileKey` | **Immutable** → `browser-profiles/<profileKey>` |
 | `enabled` | Soft disable |
 
 ### `AccountLiveSettings`
 
-Per-account `automationMode`, `currentProductId`, `mediaProfileId`, `enabled`. Changing A must not mutate B.
+Per-account `automationMode`, `currentProductId`, `mediaProfileId`, `enabled`.
+
+### `media_profiles` (schema v4)
+
+Per-account TTS provider/voice/rate. Bound via `mediaProfileId`.
 
 ## Session model
 
-`LiveSession`: start → `ended_at IS NULL`; crash recovery marks stale rows `CRASH_RECOVERED` (no auto-resume). Schema version via `app_meta.schema.version` (v3 adds `status`).
+`LiveSession`: start → `ended_at IS NULL`; crash recovery marks stale rows `CRASH_RECOVERED` (no auto-resume).
+
+Orchestrator **run generation** + approval **sessionId** binding: stop/new session cannot apply stale LLM / auto-approve.
+
+Schema: `app_meta.schema.version` — **current = 4**.
 
 ## Isolation rules
 
@@ -36,46 +45,62 @@ Per-account `automationMode`, `currentProductId`, `mediaProfileId`, `enabled`. C
 |--------|-----|
 | `LiveEvent` | required `accountId` (+ optional `sessionId`) |
 | Approvals / comment feed | account-bound; cross-account ops throw |
+| Event dedupe | per-account+session; exact id + semantic fingerprint across sources |
 | TikTok connector | one worker/process/port/token per account |
 | LIVE Manager | one observer/profile/diagnostics dir per account |
+| MediaSession | one speech queue per account; stop A ≠ stop B |
+| Operator control | takeover/emergency per account (or global emergency latch) |
 
 ## Runtime stack
 
 ```
 AppContainer
 ├── MultiLiveRuntimeManager → Map<AccountId, LiveRuntime>
+│     ├── startReadyLives / stopAll (batch)
+│     └── operatorControl (takeover / emergency)
 ├── TikTokConnectorRegistry → Map<AccountId, TikTokConnectorManager>
 ├── LiveManagerRegistry → Map<AccountId, LiveManagerManager>
 ├── AiRequestScheduler → wraps LlmProviderManager
+├── MediaSessionFactory → VoiceMediaSession (TTS + LocalPreview)
 ├── CommentFeedService → per-account buffers
-├── LiveCapacityService → license limits ≠ ResourceGovernor
+├── AppEventHub → APP_EVENT to renderer
+├── LiveCapacityService → license ≠ ResourceGovernor + SystemResourceMonitor
 └── KhepreeAccessService → fail-closed access + feature map
 ```
 
-### Capacity (PROMPT 07)
+### Capacity
 
 Khepree feature keys (client convention; platform seed pending):
 
-- `multi_live_enabled` (boolean)
-- `max_tiktok_accounts` (integer)
-- `max_concurrent_lives` (integer)
+- `multi_live_enabled`
+- `max_tiktok_accounts`
+- `max_concurrent_lives`
 
-Absent keys → fail-closed (multi off, max 1). Dev mock uses explicit limits. Hardware blockers (`RAM_LOW`, …) are separate typed errors.
+Absent keys → fail-closed. Hardware blockers (`RAM_LOW`, `CPU_HIGH`, …) separate; CPU **UNKNOWN** does not block start.
+
+### Media (voice-only)
+
+- `TtsProvider` pluggable (default Windows SAPI on win32).
+- `AudioOutput`: `LocalPreviewOutput` only — **no** virtual audio / camera / avatar yet.
+- edge-tts not registered (commercial ToS unclear).
 
 ## UI
 
-- **Live Center** (`OverviewPage`): metrics, account cards, operator queue, add-account wizard, start-ready / stop-all AI.
-- **Account Detail** (`LiveControlPage`): tabs for overview / comments / approvals / products / connections / logs.
-- Plain-language Basic UI — no “Runtime / Event Bus / Worker” jargon.
+- **Live Center:** metrics (incl. machine resources), cards, operator queue, batch start/stop, emergency stop.
+- **Account Detail:** takeover / release / F8; banner when human controls.
+- **Voice tab:** voices, rate, preview, engine status.
+- Script / Logs tabs still Coming Soon.
 
-## Deferred / LIVE_SMOKE_PENDING
+## Deferred / REAL_SMOKE_PENDING
 
-- Real TikTokLive account smoke + selector pack validation.
+- Real TikTokLive + LIVE Manager selector validation.
 - Real Gemini browser login smoke.
 - Production Khepree lease signing key pin.
-- TTS/avatar media tiers (governor only hints today).
+- Virtual audio / avatar / MuseTalk / virtual camera.
 - Windows installer clean-machine smoke.
 
-## Tests
+## Tests & smoke
 
-See `tests/` (Vitest) and `docs/FEATURE_MATRIX.md` test map. Legacy `*-self-check.ts` files remain for `npm run test:legacy:*`.
+- Automated: `tests/` + `npm run test:smoke:demo`.
+- Manual 3-account: `docs/REAL_SMOKE_TEST.md` (gated by `KHEPREE_REAL_SMOKE=1`).
+- Legacy `*-self-check.ts` remain for `npm run test:legacy:*`.

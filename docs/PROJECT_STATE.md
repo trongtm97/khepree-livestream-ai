@@ -1,43 +1,54 @@
-# Project state — Development milestone 0.2.x
+# Project state — Development milestone 0.3.x
 
 > package.json vẫn `0.1.0`. Đây **không** phải claim production release.
 
-## Milestone 0.2 focus
+Rà theo **code** sau Prompt 01–09 (session safety, multi-live ops, voice, takeover, smoke harness).
 
-Multi-live domain + runtime + connectors + Live Center UI + license/hardware capacity + Vitest CI.
+## Milestone 0.3 focus
+
+Multi-live core (0.2) **plus** operator hardening: stale-session guards, approval binding, event dedupe, batch ops, realtime UI events, Windows resource metrics, TTS media sessions, human takeover, gated real-smoke process.
 
 ## Implemented (wired in `AppContainer`)
 
-- Secure Electron process split + typed preload.
-- SQLite multi-live schema (accounts, per-account settings, sessions with crash status).
-- `MultiLiveRuntimeManager` / per-account `LiveRuntime`.
-- `TikTokConnectorRegistry` + `LiveManagerRegistry`.
-- Comment feed with required `accountId` + per-account buffers.
-- Approval Engine + cross-account resolve protection.
-- `AiRequestScheduler` over `LlmProviderManager`.
-- `LiveCapacityService` (Khepree license limits ≠ `ResourceGovernor` hardware).
-- Live session crash recovery on startup (no auto-resume).
-- Live Center UI + Account Detail tabs (VI/EN i18n).
-- Operator feedback: error dialog, toasts, readiness checklist, help.
-- Vitest suite (`npm test`) + GitHub Actions CI + foundation static check.
+- Secure Electron split + typed preload + account-aware IPC.
+- SQLite multi-live schema through **v4** (`media_profiles`).
+- `MultiLiveRuntimeManager` / per-account `LiveRuntime` (batch start-ready / stop-all).
+- `TikTokConnectorRegistry` + `LiveManagerRegistry` (per-account).
+- Comment feed isolation + `LiveEventDeduplicator` (cross-source).
+- Approval Engine with **session binding** (stop expires pending; no stale auto-approve).
+- Session **epoch / generation** guards + crash recovery (no auto-resume).
+- `AiRequestScheduler` fairness + stale discard.
+- `MediaSessionFactory` → Windows SAPI TTS + local speaker preview (per-account voice profile).
+- `OperatorControlService` — takeover / emergency (does not disconnect TikTok).
+- `SystemResourceMonitor` + ResourceGovernor (CPU sampling on Windows; GPU optional NVIDIA).
+- `AppEventHub` realtime channel + coalesced snapshot sync.
+- Live Center / Account Detail / Voice UI; takeover banner.
+- Vitest suite + CI + `test:smoke:demo` / `test:smoke:gate`.
+- Operator checklist: `docs/REAL_SMOKE_TEST.md`.
 
 ## Deliberately not claimed production-ready
 
-- Live Khepree registration + pinned production lease signing key.
-- Gemini real-account onboarding smoke.
-- TikTokLive / LIVE Manager against a **real** seller account.
-- Selector pack validation on live TikTok UI.
-- TTS / avatar / virtual camera.
-- Windows clean-install installer smoke + code signing.
-- Auto-update / telemetry.
+- Real TikTok / LIVE Manager / Gemini **account smoke** (checklist exists; results not committed as PASS).
+- Production Khepree lease signing key pin + platform capacity seed.
+- Avatar / MuseTalk / virtual camera / virtual audio.
+- Windows clean-install installer smoke + code signing + auto-update.
+- Script editor / log viewer tabs (Coming Soon).
 
-## How to verify
+## How to verify (automated)
 
 ```bash
 npm ci
 npm run typecheck
 npm test
 npm run test:foundation
+npm run test:smoke:gate
+npm run test:smoke:demo
 ```
 
-See `docs/FEATURE_MATRIX.md` for per-module status.
+Manual real accounts:
+
+```bash
+KHEPREE_REAL_SMOKE=1 npm run test:smoke:real
+```
+
+See `docs/FEATURE_MATRIX.md`, `docs/REVIEW_NEXT.md`.

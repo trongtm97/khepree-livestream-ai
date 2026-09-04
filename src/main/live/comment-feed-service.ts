@@ -19,6 +19,8 @@ export const MAX_ACCOUNT_SNAPSHOT = 200;
 
 export type CommentFeedServiceOptions = {
   eventBus: LiveEventBus;
+  /** Fired after a COMMENT is accepted into the feed (deduped by event.id). */
+  onCommentIngested?: (accountId: string) => void;
 };
 
 /**
@@ -206,6 +208,7 @@ export class CommentFeedService {
 
     this.items.set(event.id, row);
     this.trimAccount(accountId);
+    this.opts.onCommentIngested?.(accountId);
   }
 
   private trimAccount(accountId: string): void {

@@ -73,7 +73,11 @@ function isTikTokReady(snapshot: AppSnapshot): boolean {
 
 function isVoiceReady(snapshot: AppSnapshot): boolean {
   const media = snapshot.health.find((h) => h.component.startsWith("media:"));
-  return Boolean(media && media.status === "OK" && !media.component.includes("mock"));
+  return Boolean(
+    media &&
+      media.status === "OK" &&
+      !media.component.includes("mock")
+  );
 }
 
 function isVirtualCameraReady(_snapshot: AppSnapshot): boolean {

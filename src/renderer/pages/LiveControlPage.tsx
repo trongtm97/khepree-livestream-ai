@@ -51,6 +51,11 @@ export function LiveControlPage({ snapshot }: { snapshot: AppSnapshot }) {
 
   const handle = live.username.replace(/^@/, "");
   const shop = live.label?.trim() || handle;
+  const operatorMode =
+    live.operatorMode ??
+    snapshot.operatorControl?.byAccount[accountId]?.mode ??
+    "AI_ACTIVE";
+  const inTakeover = operatorMode === "HUMAN_TAKEOVER";
 
   const setProduct = (productId: string) =>
     run(async () => {
@@ -76,6 +81,12 @@ export function LiveControlPage({ snapshot }: { snapshot: AppSnapshot }) {
       {showFallback ? (
         <div className="fallbackScriptBanner" role="status">
           {t("gemini.fallbackBanner")}
+        </div>
+      ) : null}
+
+      {inTakeover ? (
+        <div className="takeoverBanner" role="alert">
+          {t("operator.takeover.banner", { shop })}
         </div>
       ) : null}
 

@@ -60,7 +60,7 @@ function withManager(
         accountLiveSettings
       },
       llm: new MockLlmProvider(),
-      createMedia: () => new MockMediaProvider(),
+      createMedia: (accountId) => new MockMediaProvider(accountId),
       assertProductAccess: () => undefined,
       capacity
     });

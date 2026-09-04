@@ -59,6 +59,32 @@ export function SettingsPage({ snapshot }: { snapshot?: AppSnapshot }) {
       <div className="panel" style={{ marginTop: 14 }}>
         <div className="panelHead">
           <div>
+            <h2>{t("operator.hotkey")}</h2>
+            <p>{t("operator.hotkey.hint")}</p>
+          </div>
+        </div>
+        <div className="form">
+          <label>
+            {t("operator.hotkey")}
+            <input
+              defaultValue={snapshot?.operatorControl?.takeoverHotkey ?? "F8"}
+              disabled={loading}
+              onBlur={(e) => {
+                const next = e.target.value.trim() || "F8";
+                void run(async () => {
+                  await window.khepreeLivestreamAI.setTakeoverHotkey(next);
+                  notify({ tone: "success", title: t("operator.hotkey.saved") });
+                  await refresh();
+                });
+              }}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 14 }}>
+        <div className="panelHead">
+          <div>
             <h2>{t("settings.onboardingTitle")}</h2>
             <p>{t("settings.onboardingSubtitle")}</p>
           </div>

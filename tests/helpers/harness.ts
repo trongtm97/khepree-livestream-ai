@@ -95,7 +95,7 @@ export function createTestManager(
       accountLiveSettings: h.accountLiveSettings
     },
     llm: new MockLlmProvider(),
-    createMedia: () => new MockMediaProvider(),
+    createMedia: (accountId) => new MockMediaProvider(accountId),
     assertProductAccess: () => undefined,
     capacity: createTestLiveCapacity({
       maxConcurrentLives: opts?.maxConcurrentLives ?? 5,

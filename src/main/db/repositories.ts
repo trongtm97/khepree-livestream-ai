@@ -18,6 +18,7 @@ import type {
   ProductDNA,
   TikTokAccount
 } from "../../shared/live-types";
+import type { MediaProfile, TtsProviderId } from "../../shared/media-contracts";
 import { normalizeProduct } from "../../shared/product-dna";
 import {
   assertSafeProfileKey,
@@ -37,6 +38,7 @@ const LLM_DEMO_ACK_KEY = "llm.demoAcknowledged";
 const GEMINI_MODEL_KEY = "gemini.selectedModel";
 const TIKTOK_UNIQUE_ID_KEY = "tiktok.uniqueId";
 const FOCUSED_ACCOUNT_KEY = "ui.focusedAccountId";
+const TAKEOVER_HOTKEY_KEY = "operator.takeoverHotkey";
 
 export class SettingsRepository {
   constructor(private readonly db: Database.Database) {}
@@ -142,6 +144,15 @@ export class SettingsRepository {
       return;
     }
     this.set(FOCUSED_ACCOUNT_KEY, id.trim());
+  }
+
+  getTakeoverHotkey(): string {
+    return this.get(TAKEOVER_HOTKEY_KEY) ?? "F8";
+  }
+
+  setTakeoverHotkey(hotkey: string): void {
+    const t = hotkey.trim() || "F8";
+    this.set(TAKEOVER_HOTKEY_KEY, t);
   }
 }
 
@@ -478,6 +489,7 @@ export class TikTokAccountRepository {
     if (active) throw new Error("ACCOUNT_LIVE_ACTIVE");
 
     const tx = this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM media_profiles WHERE account_id=?`).run(id);
       this.db.prepare(`DELETE FROM account_live_settings WHERE account_id=?`).run(id);
       this.db.prepare(`DELETE FROM tiktok_accounts WHERE id=?`).run(id);
     });
@@ -571,6 +583,103 @@ export class AccountLiveSettingsRepository {
         next.mediaProfileId ?? null,
         next.enabled ? 1 : 0,
         next.updatedAt
+      );
+    return next;
+  }
+}
+
+type MediaProfileRow = {
+  id: string;
+  account_id: string;
+  provider_id: string;
+  voice_id: string | null;
+  rate: number;
+  updated_at: string;
+};
+
+function mapMediaProfile(row: MediaProfileRow): MediaProfile {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    providerId: (row.provider_id as TtsProviderId) || "windows-sapi",
+    voiceId: row.voice_id ?? undefined,
+    rate: typeof row.rate === "number" && Number.isFinite(row.rate) ? row.rate : 1,
+    updatedAt: row.updated_at
+  };
+}
+
+export class MediaProfileRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  get(id: string): MediaProfile | undefined {
+    const row = this.db
+      .prepare(`SELECT * FROM media_profiles WHERE id=?`)
+      .get(id) as MediaProfileRow | undefined;
+    return row ? mapMediaProfile(row) : undefined;
+  }
+
+  getByAccount(accountId: string): MediaProfile | undefined {
+    const row = this.db
+      .prepare(`SELECT * FROM media_profiles WHERE account_id=?`)
+      .get(accountId) as MediaProfileRow | undefined;
+    return row ? mapMediaProfile(row) : undefined;
+  }
+
+  ensureForAccount(accountId: string): MediaProfile {
+    const existing = this.getByAccount(accountId);
+    if (existing) return existing;
+    const providerId: TtsProviderId =
+      process.platform === "win32" ? "windows-sapi" : "mock";
+    const profile: MediaProfile = {
+      id: `mp_${accountId}`,
+      accountId,
+      providerId,
+      rate: 1,
+      updatedAt: new Date().toISOString()
+    };
+    this.db
+      .prepare(
+        `INSERT INTO media_profiles (id, account_id, provider_id, voice_id, rate, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        profile.id,
+        profile.accountId,
+        profile.providerId,
+        null,
+        profile.rate,
+        profile.updatedAt
+      );
+    return profile;
+  }
+
+  upsert(
+    input: Partial<MediaProfile> & { accountId: string }
+  ): MediaProfile {
+    const prev = this.ensureForAccount(input.accountId);
+    const rateRaw = input.rate !== undefined ? input.rate : prev.rate;
+    const rate = Math.min(2, Math.max(0.5, Number.isFinite(rateRaw) ? rateRaw : 1));
+    const next: MediaProfile = {
+      id: prev.id,
+      accountId: input.accountId,
+      providerId: input.providerId ?? prev.providerId,
+      voiceId:
+        input.voiceId !== undefined ? input.voiceId || undefined : prev.voiceId,
+      rate,
+      updatedAt: new Date().toISOString()
+    };
+    this.db
+      .prepare(
+        `UPDATE media_profiles
+         SET provider_id=?, voice_id=?, rate=?, updated_at=?
+         WHERE id=?`
+      )
+      .run(
+        next.providerId,
+        next.voiceId ?? null,
+        next.rate,
+        next.updatedAt,
+        next.id
       );
     return next;
   }

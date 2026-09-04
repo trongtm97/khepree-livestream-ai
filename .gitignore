@@ -14,3 +14,5 @@ browser-profiles/
 __pycache__/
 *.pyc
 .DS_Store
+docs/smoke-results.local.md
+smoke-artifacts/

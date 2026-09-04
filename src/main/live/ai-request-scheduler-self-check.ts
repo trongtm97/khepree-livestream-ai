@@ -190,8 +190,8 @@ export async function assertAiRequestScheduler(): Promise<void> {
     });
 
     const accountId = "acc_sess";
-    // Occupy the slot so sess_old stays queued
-    const blocker = scheduler.generateActionProposal(contextFor("acc_block2", "block", "sb"));
+    // Occupy the slot so sess_old stays queued (no sessionId → not subject to bind checks)
+    const blocker = scheduler.generateActionProposal(contextFor("acc_block2", "block"));
     scheduler.bindSession(accountId, "sess_old");
     const oldJob = scheduler.generateActionProposal(
       contextFor(accountId, "old comment", "sess_old")
@@ -229,7 +229,7 @@ export async function assertAiRequestScheduler(): Promise<void> {
     });
 
     // Occupy the single slot with a fresh job, then enqueue a job that will go stale
-    const blocker = scheduler.generateActionProposal(contextFor("acc_block", "blocker", "s1"));
+    const blocker = scheduler.generateActionProposal(contextFor("acc_block", "blocker"));
     scheduler.bindSession("acc_stale", "s1");
     const staleJob = scheduler.generateActionProposal(contextFor("acc_stale", "too late", "s1"));
     await sleep(5);
@@ -255,8 +255,8 @@ export async function assertAiRequestScheduler(): Promise<void> {
     });
     const accountId = "acc_mismatch";
     scheduler.bindSession(accountId, "sess_1");
-    // Occupy slot with another account so mismatch job stays queued
-    const blocker = scheduler.generateActionProposal(contextFor("acc_other", "block", "sx"));
+    // Occupy slot with another account so mismatch job stays queued (no sessionId on blocker)
+    const blocker = scheduler.generateActionProposal(contextFor("acc_other", "block"));
     const oldQueued = scheduler.generateActionProposal(contextFor(accountId, "old", "sess_1"));
     await sleep(5);
     scheduler.bindSession(accountId, "sess_2");
@@ -265,6 +265,26 @@ export async function assertAiRequestScheduler(): Promise<void> {
     const out = await oldQueued;
     assert(out.kind === "IGNORE" && out.riskTags.includes("session_mismatch"), "session mismatch drop");
     assert(!provider.finished.includes(accountId), "old session never hit provider");
+  }
+
+  // In-flight: unbind while provider is running → discard real proposal
+  {
+    const provider = new RecordingProvider();
+    provider.delayMs = 80;
+    const scheduler = new AiRequestScheduler({
+      provider,
+      maxConcurrent: 1,
+      staleMs: 60_000
+    });
+    const accountId = "acc_inflight";
+    scheduler.bindSession(accountId, "sess_live");
+    const job = scheduler.generateActionProposal(contextFor(accountId, "in flight", "sess_live"));
+    await sleep(10);
+    scheduler.unbindSession(accountId);
+    const out = await job;
+    assert(out.kind === "IGNORE", "in-flight unbound → IGNORE");
+    assert(out.riskTags.includes("scheduler_stale"), "scheduler_stale tag");
+    assert(out.riskTags.includes("session_ended"), "session_ended tag");
   }
 
   console.log("ai-request-scheduler self-check PASS");

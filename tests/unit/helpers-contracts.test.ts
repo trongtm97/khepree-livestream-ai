@@ -4,6 +4,7 @@ import { assertProductDnaHelpers } from "../../src/shared/product-dna";
 import { assertCommentPriorityHelpers } from "../../src/shared/comment-priority";
 import { assertTikTokAccountHelpers } from "../../src/shared/tiktok-account";
 import { assertApprovalEngineContract } from "../../src/main/live/approval-engine";
+import { assertLiveEventDeduplicator } from "../../src/main/live/live-event-deduplicator";
 import { resolveLivestreamLicenseLimits } from "../../src/shared/khepree-livestream-features";
 
 describe("unit / contracts + helpers", () => {
@@ -25,6 +26,10 @@ describe("unit / contracts + helpers", () => {
 
   it("approval engine contract", () => {
     expect(() => assertApprovalEngineContract()).not.toThrow();
+  });
+
+  it("live event deduplicator", () => {
+    expect(() => assertLiveEventDeduplicator()).not.toThrow();
   });
 
   it("fail-closed livestream license defaults when features absent", () => {

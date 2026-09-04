@@ -35,7 +35,7 @@ export function assertLiveSessionRecovery(): void {
 
   try {
     db = openDatabase(userData);
-    assert(getSchemaVersion(db) === CURRENT_SCHEMA_VERSION, "schema v3");
+    assert(getSchemaVersion(db) === CURRENT_SCHEMA_VERSION, "schema version");
     assert(CURRENT_SCHEMA_VERSION >= 3, "crash recovery requires schema >= 3");
 
     const sessions = new LiveSessionRepository(db);
@@ -125,7 +125,7 @@ export function assertLiveSessionRecovery(): void {
         accountLiveSettings: accountLiveSettings2
       },
       llm: new MockLlmProvider(),
-      createMedia: () => new MockMediaProvider(),
+      createMedia: (accountId) => new MockMediaProvider(accountId),
       assertProductAccess: () => undefined,
       capacity: createTestLiveCapacity({ maxConcurrentLives: 5 })
     });

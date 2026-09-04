@@ -19,6 +19,36 @@ import type { TikTokPublicState } from "./tiktok-contracts";
 import type { LiveManagerPublicState } from "./live-manager-contracts";
 import type { CommentFeedSnapshot } from "./comment-feed";
 import type { LivestreamLicenseLimits } from "./khepree-livestream-features";
+import type {
+  LiveStartReadyBatchResult,
+  LiveStopAllBatchResult
+} from "./live-batch";
+import type { AppEvent } from "./app-events";
+import type { SystemResourcePublicSnapshot } from "./system-resources";
+import type {
+  MediaEnginePublicState,
+  MediaProfile,
+  TtsVoiceInfo
+} from "./media-contracts";
+import type { OperatorControlPublicSnapshot } from "./operator-control";
+
+export type {
+  LiveStartReadyBatchResult,
+  LiveStopAllBatchResult,
+  LiveBatchAccountResult
+} from "./live-batch";
+export type { AppEvent, AppEventType } from "./app-events";
+export type {
+  MediaEnginePublicState,
+  MediaProfile,
+  TtsVoiceInfo,
+  TtsProviderId
+} from "./media-contracts";
+export type {
+  OperatorControlPublicSnapshot,
+  OperatorControlMode,
+  OperatorControlAccountState
+} from "./operator-control";
 
 /** Operator-facing crash recovery notice after abnormal app exit. */
 export interface SessionRecoveryNotice {
@@ -30,9 +60,14 @@ export const IPC = {
   APP_SNAPSHOT: "app:snapshot",
   LIVE_START: "live:start",
   LIVE_STOP: "live:stop",
+  LIVE_START_READY_BATCH: "live:start-ready-batch",
+  LIVE_STOP_ALL: "live:stop-all",
   LIVE_SET_MODE: "live:set-mode",
   LIVE_ACCOUNT_SNAPSHOT: "live:account-snapshot",
   LIVE_MULTI_SNAPSHOT: "live:multi-snapshot",
+  COMMENTS_SNAPSHOT: "comments:snapshot",
+  HEALTH_SNAPSHOT: "health:snapshot",
+  APP_EVENT: "app:event",
   APPROVAL_RESOLVE: "approval:resolve",
   APPROVAL_CANCEL_AUTO: "approval:cancel-auto",
   APPROVAL_CANCEL_NEAREST_AUTO: "approval:cancel-nearest-auto",
@@ -73,7 +108,18 @@ export const IPC = {
   KHEPREE_REFRESH_OFFERS: "khepree:refresh-offers",
   KHEPREE_CHECKOUT: "khepree:checkout",
   SETTINGS_SET_LOCALE: "settings:set-locale",
-  SETTINGS_SET_ONBOARDING: "settings:set-onboarding"
+  SETTINGS_SET_ONBOARDING: "settings:set-onboarding",
+  MEDIA_LIST_VOICES: "media:list-voices",
+  MEDIA_GET_PROFILE: "media:get-profile",
+  MEDIA_SET_PROFILE: "media:set-profile",
+  MEDIA_PREVIEW: "media:preview",
+  MEDIA_ENGINE_STATUS: "media:engine-status",
+  OPERATOR_TAKEOVER: "operator:takeover",
+  OPERATOR_EXIT_TAKEOVER: "operator:exit-takeover",
+  OPERATOR_TOGGLE_TAKEOVER: "operator:toggle-takeover",
+  OPERATOR_EMERGENCY_STOP: "operator:emergency-stop",
+  OPERATOR_GET_STATE: "operator:get-state",
+  OPERATOR_SET_HOTKEY: "operator:set-hotkey"
 } as const;
 
 /** Public multi-live overview — no runtimes, cookies, or BrowserContext. */
@@ -116,6 +162,10 @@ export interface AppSnapshot {
   licenseLimits: LivestreamLicenseLimits;
   /** Pending approvals from all accounts (capped) — Live Center queue. */
   pendingApprovals: ApprovalItem[];
+  /** Cached OS metrics — CPU/GPU may be UNKNOWN; never invents numbers. */
+  resources?: SystemResourcePublicSnapshot;
+  /** Human takeover / emergency state. */
+  operatorControl?: OperatorControlPublicSnapshot;
 }
 
 /**
@@ -126,9 +176,17 @@ export interface RendererApi {
   snapshot(): Promise<AppSnapshot>;
   getAccountSnapshot(accountId: string): Promise<AccountLiveSnapshot>;
   getMultiLiveSnapshot(): Promise<MultiLiveSnapshot>;
+  getCommentsSnapshot(accountId?: string): Promise<CommentFeedSnapshot>;
+  getHealthSnapshot(): Promise<RuntimeHealth[]>;
+  /** Typed realtime channel — returns unsubscribe. Never exposes raw ipcRenderer. */
+  onAppEvent(callback: (event: AppEvent) => void): () => void;
 
   startLive(accountId: string): Promise<void>;
   stopLive(accountId: string): Promise<void>;
+  /** Main-process batch: start every ready account; one failure does not abort others. */
+  startReadyLives(): Promise<LiveStartReadyBatchResult>;
+  /** Main-process batch: stop all AI lives (not TikTok / browser). */
+  stopAllLives(): Promise<LiveStopAllBatchResult>;
   setAutomationMode(accountId: string, mode: AutomationMode): Promise<void>;
 
   resolveApproval(
@@ -193,4 +251,20 @@ export interface RendererApi {
   testGemini(prompt?: string): Promise<GeminiTestResult>;
   saveGeminiSession(secure1PSID: string, secure1PSIDTS?: string): Promise<GeminiPublicState>;
   clearGeminiSession(): Promise<GeminiPublicState>;
+
+  listMediaVoices(): Promise<TtsVoiceInfo[]>;
+  getMediaProfile(accountId: string): Promise<MediaProfile>;
+  setMediaProfile(
+    accountId: string,
+    patch: { voiceId?: string | null; rate?: number }
+  ): Promise<MediaProfile>;
+  previewMediaVoice(accountId: string, text?: string): Promise<void>;
+  getMediaEngineStatus(): Promise<MediaEnginePublicState>;
+
+  enterTakeover(accountId: string): Promise<OperatorControlPublicSnapshot>;
+  exitTakeover(accountId: string): Promise<OperatorControlPublicSnapshot>;
+  toggleTakeover(accountId: string): Promise<OperatorControlPublicSnapshot>;
+  emergencyStopAllAi(): Promise<OperatorControlPublicSnapshot>;
+  getOperatorControlState(): Promise<OperatorControlPublicSnapshot>;
+  setTakeoverHotkey(hotkey: string): Promise<string>;
 }

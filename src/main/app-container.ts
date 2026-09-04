@@ -8,9 +8,11 @@ import {
   ProductRepository,
   SettingsRepository,
   TikTokAccountRepository,
-  AccountLiveSettingsRepository
+  AccountLiveSettingsRepository,
+  MediaProfileRepository
 } from "./db/repositories";
 import { LiveEventBus } from "./core/event-bus";
+import { AppEventHub } from "./core/app-event-hub";
 import {
   assertLlmProviderManagerContract,
   LlmProviderManager
@@ -23,12 +25,17 @@ import {
   assertLiveManagerContract
 } from "./connectors/tiktok/live-manager-manager";
 import { LiveManagerRegistry } from "./connectors/tiktok/live-manager-registry";
-import { MockMediaProvider } from "./connectors/media/mock-media-provider";
+import { MediaSessionFactory } from "./connectors/media/media-session-factory";
+import { OperatorControlService } from "./live/operator-control-service";
 import { CommentFeedService } from "./live/comment-feed-service";
 import { MultiLiveRuntimeManager } from "./live/multi-live-runtime-manager";
 import { AiRequestScheduler } from "./live/ai-request-scheduler";
 import { LiveCapacityService } from "./live/live-capacity-service";
-import { createOsResourceGovernor } from "./live/resource-governor";
+import {
+  createOsResourceGovernor,
+  type OsResourceGovernor,
+  type ResourceSnapshot
+} from "./live/resource-governor";
 import {
   LiveSessionRecoveryService,
   type SessionRecoveryReport
@@ -43,6 +50,7 @@ import { assertSalesBrainContract } from "../shared/sales-brain";
 import { assertLiveMemoryHelpers } from "../shared/live-memory";
 import { assertSalesScriptHelpers } from "../shared/sales-script";
 import { assertApprovalEngineContract } from "./live/approval-engine";
+import { assertLiveEventDeduplicator } from "./live/live-event-deduplicator";
 import { assertTikTokAccountHelpers } from "../shared/tiktok-account";
 import { resolveAppRoot } from "./app-paths";
 
@@ -59,8 +67,11 @@ export class AppContainer {
   readonly sessions: LiveSessionRepository;
   readonly tiktokAccounts: TikTokAccountRepository;
   readonly accountLiveSettings: AccountLiveSettingsRepository;
+  readonly mediaProfiles: MediaProfileRepository;
   /** Fan-in bus for UI comment feed (events forwarded from each LiveRuntime). */
   readonly eventBus = new LiveEventBus();
+  /** Realtime UI notifications (no secrets). */
+  readonly appEvents = new AppEventHub();
   readonly khepree = new KhepreeAccessService();
   readonly heartbeat = new KhepreeHeartbeatService(this.khepree);
   readonly llm: LlmProviderManager;
@@ -74,10 +85,26 @@ export class AppContainer {
   /** Per-account LIVE Manager browsers (one profile each). */
   readonly liveManager: LiveManagerRegistry;
   readonly comments: CommentFeedService;
-  /** Shared mock until per-runtime media sessions are fully specialized. */
-  readonly media = new MockMediaProvider();
+  /** Per-account voice MediaSession factory (Windows SAPI by default). */
+  readonly mediaFactory: MediaSessionFactory;
+  readonly operatorControl: OperatorControlService;
+  /** Aggregate media health for snapshot (TTS engine, not avatar). */
+  get media() {
+    return {
+      health: async () => {
+        const h = await this.mediaFactory.getTts().health();
+        return {
+          ...h,
+          component: h.component.startsWith("tts:")
+            ? h.component.replace(/^tts:/, "media:")
+            : `media:${h.component}`
+        };
+      }
+    };
+  }
   /** License limits ≠ hardware capacity — never mixed. */
   readonly capacity: LiveCapacityService;
+  private readonly resourceGovernor: OsResourceGovernor;
   readonly multiLive: MultiLiveRuntimeManager;
   /** Last startup crash-recovery report (empty when nothing stale). */
   private sessionRecovery: SessionRecoveryReport = {
@@ -97,6 +124,25 @@ export class AppContainer {
     this.sessions = new LiveSessionRepository(this.db);
     this.tiktokAccounts = new TikTokAccountRepository(this.db);
     this.accountLiveSettings = new AccountLiveSettingsRepository(this.db);
+    this.mediaProfiles = new MediaProfileRepository(this.db);
+
+    this.mediaFactory = new MediaSessionFactory({
+      getProfile: (accountId) => {
+        const profile = this.mediaProfiles.ensureForAccount(accountId);
+        const settings = this.accountLiveSettings.ensure(accountId);
+        if (settings.mediaProfileId !== profile.id) {
+          this.accountLiveSettings.upsert({
+            accountId,
+            mediaProfileId: profile.id
+          });
+        }
+        return profile;
+      }
+    });
+
+    this.operatorControl = new OperatorControlService({
+      takeoverHotkey: this.settings.getTakeoverHotkey()
+    });
 
     seedLegacyTikTokAccountIfNeeded(
       this.tiktokAccounts,
@@ -117,12 +163,18 @@ export class AppContainer {
 
     this.aiScheduler = new AiRequestScheduler({ provider: this.llm });
 
-    this.comments = new CommentFeedService({ eventBus: this.eventBus });
+    this.comments = new CommentFeedService({
+      eventBus: this.eventBus,
+      onCommentIngested: (accountId) => {
+        this.appEvents.emit("COMMENT_RECEIVED", accountId);
+      }
+    });
 
+    this.resourceGovernor = createOsResourceGovernor();
     this.capacity = new LiveCapacityService({
       getFeatures: () => this.khepree.publicState.features,
       isLicenseActive: () => this.khepree.publicState.status === "ACTIVE",
-      governor: createOsResourceGovernor()
+      governor: this.resourceGovernor
     });
 
     this.multiLive = new MultiLiveRuntimeManager({
@@ -136,7 +188,11 @@ export class AppContainer {
         accountLiveSettings: this.accountLiveSettings
       },
       llm: this.aiScheduler,
-      createMedia: () => new MockMediaProvider(),
+      createMedia: (accountId) => this.mediaFactory.create(accountId),
+      operatorControl: this.operatorControl,
+      onOperatorControlChanged: (accountId) => {
+        this.appEvents.emit("OPERATOR_CONTROL_CHANGED", accountId);
+      },
       assertProductAccess: (feature) => this.khepree.assertProductAccess(feature),
       capacity: this.capacity,
       getResourceExtras: () => ({
@@ -151,13 +207,18 @@ export class AppContainer {
         aiQueueLength: this.aiScheduler.getMetrics().queueLength
       }),
       onEvent: (event) => this.eventBus.publish(event),
-      onApprovalChanged: (item) => this.comments.applyApproval(item),
+      onApprovalChanged: (item) => {
+        this.comments.applyApproval(item);
+        this.appEvents.emit("APPROVAL_UPDATED", item.accountId);
+      },
       onLiveStarted: (accountId, sessionId) => {
         this.aiScheduler.bindSession(accountId, sessionId);
+        this.appEvents.emit("LIVE_UPDATED", accountId);
       },
       onLiveStopped: (accountId) => {
         this.aiScheduler.unbindSession(accountId);
         this.aiScheduler.cancelAccount(accountId);
+        this.appEvents.emit("LIVE_UPDATED", accountId);
       }
     });
 
@@ -202,6 +263,7 @@ export class AppContainer {
       assertSalesBrainContract();
       assertLiveMemoryHelpers();
       assertApprovalEngineContract();
+      assertLiveEventDeduplicator();
       assertSalesScriptHelpers();
       assertTikTokAccountHelpers();
     }
@@ -209,8 +271,29 @@ export class AppContainer {
       this.settings.setLlmPreferredProvider("gemini-web");
     }
     this.comments.start();
+    this.resourceGovernor.start();
     await this.khepree.initialize();
     this.heartbeat.start();
+  }
+
+  /** Hardware metrics for UI — never blocks; UNKNOWN is fine. */
+  getResourceSnapshot(): ResourceSnapshot {
+    const extras = {
+      activeTikTokWorkers: this.tiktok
+        .getAllStates()
+        .filter((s) => s.connected || s.phase === "CONNECTING" || s.phase === "RECONNECTING")
+        .length,
+      activeBrowserContexts: this.liveManager
+        .getAllStates()
+        .filter((s) => s.phase !== "CLOSED")
+        .length,
+      aiQueueLength: this.aiScheduler.getMetrics().queueLength
+    };
+    return this.capacity.resourceSnapshot({
+      activeRuntimes: this.multiLive.getAllSnapshots().filter((s) => s.isRunning).length,
+      accountCount: this.tiktokAccounts.list().length,
+      ...extras
+    });
   }
 
   getSessionRecoveryReport(): SessionRecoveryReport {
@@ -218,6 +301,7 @@ export class AppContainer {
   }
 
   dispose(): void {
+    this.resourceGovernor.stop();
     this.multiLive.dispose();
     this.aiScheduler.cancelAll();
     this.comments.stop();
