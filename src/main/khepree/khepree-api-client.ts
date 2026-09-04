@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
+  DesktopActivateResponse,
   DesktopAuthExchangeResponse,
+  DesktopCheckoutCreateResponse,
   DesktopMeResponse,
+  DesktopPlansResponse,
   DesktopRefreshResponse
 } from "../../shared/khepree-contracts";
 import { DeviceIdentityService } from "./device-identity-service";
@@ -41,8 +44,63 @@ export class KhepreeApiClient {
     });
   }
 
+  async activate(input: {
+    clientId: string;
+    accessToken: string;
+    appVersion?: string;
+  }): Promise<DesktopActivateResponse> {
+    return this.json("/desktop/activate", {
+      method: "POST",
+      accessToken: input.accessToken,
+      body: {
+        clientId: input.clientId,
+        installationId: this.deviceIdentity.installationId,
+        devicePublicKey: this.deviceIdentity.publicKeyPem,
+        platform: process.platform,
+        appVersion: input.appVersion
+      }
+    });
+  }
+
   async me(accessToken: string): Promise<DesktopMeResponse> {
     return this.json("/desktop/me", {
+      method: "GET",
+      accessToken
+    });
+  }
+
+  async listPlans(accessToken: string, clientId: string, locale = "vi"): Promise<DesktopPlansResponse> {
+    const qs = new URLSearchParams({ clientId, locale });
+    return this.json(`/desktop/plans?${qs.toString()}`, {
+      method: "GET",
+      accessToken
+    });
+  }
+
+  async createCheckout(input: {
+    accessToken: string;
+    clientId: string;
+    planPublicId: string;
+    pricePublicId: string;
+    locale?: string;
+  }): Promise<DesktopCheckoutCreateResponse> {
+    return this.json("/desktop/checkout", {
+      method: "POST",
+      accessToken: input.accessToken,
+      body: {
+        clientId: input.clientId,
+        planPublicId: input.planPublicId,
+        pricePublicId: input.pricePublicId,
+        locale: input.locale ?? "vi"
+      }
+    });
+  }
+
+  async checkoutStatus(
+    accessToken: string,
+    checkoutPublicId: string
+  ): Promise<{ checkoutPublicId: string; status: string; orderStatus: string }> {
+    return this.json(`/desktop/checkout/${encodeURIComponent(checkoutPublicId)}/status`, {
       method: "GET",
       accessToken
     });
@@ -98,11 +156,12 @@ export class KhepreeApiClient {
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body)
     });
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
+    const raw = text ? JSON.parse(text) : {};
     if (!res.ok) {
-      const code = data?.error?.code ?? `HTTP_${res.status}`;
+      const code = raw?.error?.code ?? `HTTP_${res.status}`;
       throw new Error(code);
     }
-    return data as T;
+    // Khepree API wraps success payloads as { data, meta }.
+    return (raw && typeof raw === "object" && "data" in raw ? raw.data : raw) as T;
   }
 }

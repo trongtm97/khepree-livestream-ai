@@ -1,0 +1,3601 @@
+# MASTER PROJECT CONTEXT
+
+# KHEPREE LIVESTREAM AI
+
+Phiên bản tài liệu: 1.0
+Ngôn ngữ chính của sản phẩm: Tiếng Việt
+Repository phần mềm:
+
+https://github.com/trongtm97/khepree-livestream-ai
+
+Nền tảng tài khoản / bản quyền:
+
+https://github.com/trongtm97/khepree
+
+Sản phẩm Khepree khác dùng để tham khảo cách tích hợp:
+
+https://github.com/trongtm97/khepree-noval-ai
+
+---
+
+# 1. TỔNG QUAN SẢN PHẨM
+
+Tên chính thức:
+
+**Khepree Livestream AI**
+
+Đây là phần mềm desktop dành cho người bán hàng livestream, trước mắt tập trung vào TikTok LIVE/TikTok Shop.
+
+Mục tiêu của phần mềm không phải đơn giản là:
+
+* phát video lặp;
+* phát giọng AI liên tục;
+* tạo một avatar biết nói.
+
+Mục tiêu lớn hơn là xây dựng một:
+
+**AI Live Commerce Operating System**
+
+hay hiểu đơn giản hơn:
+
+**Trợ lý AI vận hành livestream bán hàng.**
+
+AI hỗ trợ phần lớn công việc lặp lại trong livestream, trong khi người dùng vẫn ngồi trực và giữ quyền kiểm soát cuối cùng.
+
+---
+
+# 2. TRIẾT LÝ SẢN PHẨM
+
+Kiến trúc được xây dựng theo triết lý:
+
+## HUMAN-SUPERVISED AUTONOMY
+
+Tức là:
+
+AI làm phần lớn công việc.
+
+Con người giám sát.
+
+AI tự động xử lý những việc an toàn.
+
+Những việc quan trọng hoặc không chắc chắn sẽ chuyển cho người trực quyết định.
+
+Ví dụ:
+
+AI có thể tự động:
+
+* đọc bình luận;
+* xác định bình luận quan trọng;
+* nhận biết ý định mua hàng;
+* tìm thông tin sản phẩm;
+* soạn câu trả lời;
+* đề xuất CTA;
+* thay đổi trạng thái kịch bản;
+* chuẩn bị lời nói;
+* đề xuất cảnh hiển thị;
+* theo dõi hoạt động livestream.
+
+Người dùng chịu trách nhiệm:
+
+* giám sát;
+* sửa câu trả lời;
+* từ chối câu trả lời;
+* tiếp quản microphone;
+* xử lý tình huống đặc biệt;
+* xử lý khi AI thiếu thông tin;
+* dừng AI khẩn cấp.
+
+Mục tiêu cuối cùng không nhất thiết là:
+
+"Không cần người vận hành."
+
+Mục tiêu thực tế hơn là:
+
+"Một người có thể vận hành livestream giống như có một đội 3–5 người hỗ trợ."
+
+---
+
+# 3. ĐỐI TƯỢNG NGƯỜI DÙNG
+
+Người dùng chính:
+
+* người bán hàng TikTok;
+* chủ shop online;
+* affiliate marketer;
+* seller TikTok Shop;
+* người livestream bán hàng;
+* agency livestream;
+* người quản lý nhiều livestream.
+
+Phần lớn người dùng:
+
+* không biết lập trình;
+* không hiểu API;
+* không hiểu LLM;
+* không hiểu WebSocket;
+* không hiểu RTMP;
+* không hiểu CUDA;
+* không hiểu OBS sâu.
+
+Vì vậy giao diện phải diễn giải mọi thứ bằng ngôn ngữ phổ thông.
+
+Ví dụ không nên viết:
+
+"Gemini Provider Status"
+
+Mà nên viết:
+
+"Não AI Gemini"
+
+Sau đó giải thích:
+
+"Gemini giúp phần mềm đọc câu hỏi của khách, hiểu họ đang cần gì và soạn câu trả lời phù hợp."
+
+---
+
+# 4. NGÔN NGỮ GIAO DIỆN
+
+Ngôn ngữ chính:
+
+**Tiếng Việt**
+
+Toàn bộ giao diện người dùng phải ưu tiên tiếng Việt.
+
+Bao gồm:
+
+* menu;
+* nút;
+* dialog;
+* thông báo;
+* lỗi;
+* cảnh báo;
+* trạng thái;
+* tooltip;
+* onboarding;
+* hướng dẫn;
+* empty state;
+* loading state;
+* cấu hình.
+
+Không hard-code text UI.
+
+Nên có:
+
+src/locales/
+
+vi.json
+
+Sau này có thể mở rộng:
+
+en.json
+zh.json
+th.json
+id.json
+
+Người dùng phổ thông không nên nhìn thấy các từ kỹ thuật nếu không cần thiết.
+
+Ví dụ:
+
+"Approval Engine"
+
+có thể hiển thị thành:
+
+"Hệ thống xác nhận của AI"
+
+"Product DNA"
+
+có thể hiển thị thành:
+
+"Thông tin chuẩn của sản phẩm"
+
+"Live Event Bus"
+
+không cần hiển thị trực tiếp với người dùng.
+
+---
+
+# 5. NỀN TẢNG KỸ THUẬT
+
+Desktop framework chính:
+
+**ElectronJS**
+
+Frontend:
+
+* React;
+* TypeScript.
+
+Desktop main process:
+
+* Electron Main;
+* TypeScript.
+
+AI/media backend:
+
+* Python;
+* có thể dùng FastAPI/local HTTP;
+* hoặc child process/sidecar.
+
+Database local:
+
+* SQLite;
+* better-sqlite3 ở Electron core.
+
+Browser automation:
+
+* Playwright.
+
+AI:
+
+* Gemini Web thông qua:
+
+https://github.com/HanaokaYuzu/Gemini-API
+
+TikTok realtime events:
+
+ưu tiên repo unofficial như:
+
+TikTokLive Python.
+
+Media:
+
+* FFmpeg;
+* LiveTalking;
+* MuseTalk;
+* TTS engine;
+* virtual camera;
+* virtual audio.
+
+---
+
+# 6. KIẾN TRÚC TỔNG THỂ
+
+Kiến trúc mục tiêu:
+
+Electron Application
+
+↓
+
+React UI
+
+↓
+
+Preload IPC
+
+↓
+
+Electron Main Process
+
+↓
+
+Core Services
+
+Core gồm:
+
+* Khepree License Manager
+* Event Bus
+* Live Orchestrator
+* Sales State Machine
+* Product Brain
+* Sales Brain
+* Approval Engine
+* Policy Guard
+* Comment Priority Engine
+* Connector Manager
+* Media Manager
+* Runtime Health Monitor
+* Database
+
+Các connector độc lập:
+
+Gemini Connector
+
+↓
+
+Gemini-API Python worker
+
+↓
+
+Tài khoản Gemini của người dùng
+
+TikTok Connector
+
+↓
+
+TikTokLive unofficial
+
+*
+
+TikTok LIVE Manager browser observer
+
+↓
+
+TikTok
+
+Media Connector
+
+↓
+
+TTS
+
+↓
+
+LiveTalking / MuseTalk
+
+↓
+
+FFmpeg
+
+↓
+
+Virtual Camera + Virtual Audio
+
+↓
+
+TikTok LIVE Manager
+
+---
+
+# 7. NGUYÊN TẮC LOCAL-FIRST
+
+Phần mềm được định hướng:
+
+**Local-first**
+
+Mục tiêu:
+
+chi phí vận hành của nhà cung cấp phần mềm gần bằng 0.
+
+Người dùng tự cung cấp:
+
+* PC;
+* GPU;
+* internet;
+* tài khoản TikTok;
+* tài khoản Gemini;
+* tài nguyên máy tính.
+
+Khepree Livestream AI chạy AI/media chủ yếu trên máy người dùng.
+
+Server của nhà phát triển chủ yếu xử lý:
+
+* license;
+* account;
+* subscription;
+* entitlement;
+* update;
+* selector pack;
+* policy pack;
+* template marketplace trong tương lai.
+
+Không nên biến sản phẩm thành SaaS GPU đắt đỏ nếu không cần.
+
+---
+
+# 8. KHEPREE PLATFORM
+
+Khepree là nền tảng đã tồn tại và đã deploy.
+
+Repository:
+
+https://github.com/trongtm97/khepree
+
+Khepree chịu trách nhiệm cho:
+
+* account;
+* authentication;
+* licensing;
+* subscription;
+* entitlement;
+* device binding;
+* feature control;
+* product authorization.
+
+Khepree Livestream AI là một desktop client của hệ sinh thái Khepree.
+
+Không tạo:
+
+* auth server mới;
+* subscription system mới;
+* license server riêng;
+* user database riêng trên cloud.
+
+Phải tái sử dụng Khepree.
+
+---
+
+# 9. THAM KHẢO KHEPREE NOVAL AI
+
+Repository:
+
+https://github.com/trongtm97/khepree-noval-ai
+
+Đây là phần mềm khác đã kết nối Khepree.
+
+Khepree Livestream AI nên bám theo pattern tương tự về:
+
+* login;
+* PKCE;
+* device identity;
+* signed lease;
+* heartbeat;
+* entitlement;
+* refresh token;
+* session;
+* logout;
+* revoke;
+* feature gating.
+
+Không tự tạo một licensing architecture hoàn toàn khác nếu Khepree đã có cách chuẩn.
+
+---
+
+# 10. KHEPREE PRODUCT IDENTITY
+
+Foundation hiện đang định hướng sử dụng:
+
+Product slug:
+
+khepree-livestream-ai
+
+Desktop client ID:
+
+khepree-livestream-ai-desktop
+
+Custom protocol:
+
+khepreelivestreamai://auth/callback
+
+Các giá trị này phải được đối chiếu với cấu trúc product/client thật trong Khepree trước khi production.
+
+---
+
+# 11. SECURITY BOUNDARY CỦA ELECTRON
+
+Một nguyên tắc cực kỳ quan trọng:
+
+Renderer không được trực tiếp giữ secret.
+
+Renderer không được trực tiếp truy cập:
+
+* refresh token;
+* access token;
+* Google cookies;
+* TikTok session cookies;
+* Khepree private state;
+* filesystem tùy ý;
+* child_process;
+* Playwright;
+* database.
+
+Renderer chỉ giao tiếp thông qua:
+
+Preload IPC.
+
+Electron BrowserWindow phải ưu tiên:
+
+contextIsolation = true
+
+sandbox = true
+
+nodeIntegration = false
+
+webviewTag = false
+
+---
+
+# 12. SECRET STORAGE
+
+Secret local phải được mã hóa.
+
+Có thể dùng:
+
+Electron safeStorage.
+
+Ví dụ:
+
+Google/Gemini session
+
+TikTok browser session
+
+Khepree refresh token
+
+device private key
+
+Không gửi Google/TikTok credentials về server Khepree.
+
+Server Khepree không cần biết:
+
+* password Google;
+* password TikTok;
+* Gemini cookie;
+* TikTok cookie.
+
+---
+
+# 13. GEMINI LÀ LLM CHÍNH
+
+Người dùng sẽ sử dụng tài khoản Gemini của chính họ.
+
+Không bắt buộc:
+
+Gemini API Key chính thức.
+
+Định hướng connector:
+
+https://github.com/HanaokaYuzu/Gemini-API
+
+Đây là reverse-engineered Gemini Web API.
+
+Phần mềm chấp nhận sử dụng repo unofficial nếu mang lại kết quả tốt.
+
+Tuy nhiên Gemini-API không được đóng cứng vào core.
+
+Phải tạo interface:
+
+LLMProvider
+
+Ví dụ implementation:
+
+GeminiWebProvider
+
+OfficialGeminiProvider trong tương lai
+
+OpenAICompatibleProvider trong tương lai
+
+LocalLLMProvider trong tương lai
+
+FallbackScriptProvider
+
+---
+
+# 14. GEMINI PHẢI CHẠY DƯỚI DẠNG SIDECAR
+
+Không nên copy code Gemini-API trực tiếp vào proprietary TypeScript core.
+
+Tốt hơn:
+
+Electron Main
+
+↓
+
+Local HTTP
+
+↓
+
+Python Gemini Worker
+
+↓
+
+gemini_webapi
+
+Worker chạy trên:
+
+127.0.0.1
+
+Có random local token.
+
+Ví dụ endpoint:
+
+GET /health
+
+POST /v1/init
+
+GET /v1/models
+
+POST /v1/generate
+
+---
+
+# 15. GEMINI SESSION
+
+Người dùng đăng nhập tài khoản Gemini của chính họ.
+
+Không yêu cầu họ cung cấp password Google trực tiếp cho Khepree Livestream AI.
+
+Có thể hỗ trợ:
+
+* browser login;
+* Firefox profile;
+* cookie import;
+* session persistence.
+
+Các cookie cần được:
+
+* giữ local;
+* mã hóa;
+* không upload server.
+
+---
+
+# 16. GEMINI HEALTH MANAGER
+
+Gemini Web là unofficial nên có thể hỏng bất cứ lúc nào.
+
+Phải theo dõi trạng thái:
+
+CONNECTED
+
+DEGRADED
+
+DOWN
+
+AUTH_REQUIRED
+
+QUOTA_LIMIT
+
+CONNECTOR_OUTDATED
+
+Ví dụ:
+
+Gemini bình thường:
+
+Não AI: Hoạt động tốt
+
+Gemini timeout:
+
+Não AI: Phản hồi chậm
+
+Gemini cookie hết hạn:
+
+Não AI: Cần đăng nhập lại
+
+---
+
+# 17. FALLBACK KHI GEMINI HỎNG
+
+Livestream không được đứng im chỉ vì Gemini bị lỗi.
+
+Cần xây:
+
+Fallback Sales Brain.
+
+Ví dụ chuẩn bị trước:
+
+HOOK
+
+PRODUCT_INTRO
+
+FEATURE
+
+BENEFIT
+
+PRICE
+
+FAQ
+
+CTA
+
+THANK_YOU
+
+TRANSITION
+
+IDLE
+
+ORDER_REACTION
+
+Có thể lưu hàng trăm hoặc hàng nghìn câu đã được duyệt.
+
+Khi Gemini down:
+
+State Machine vẫn tiếp tục.
+
+Script Engine thay thế Gemini tạm thời.
+
+---
+
+# 18. KHÔNG SỬ DỤNG TIKTOK OPEN API LÀM CRITICAL PATH
+
+Chủ dự án không phải công ty và không muốn phụ thuộc TikTok Open API.
+
+Vì vậy:
+
+TikTok API chính thức không phải yêu cầu bắt buộc.
+
+Kiến trúc TikTok chủ yếu dựa trên:
+
+1. TikTokLive unofficial
+
+2. TikTok LIVE Manager browser
+
+3. Playwright
+
+4. DOM observation
+
+5. UI automation
+
+6. Human operator
+
+---
+
+# 19. TIKTOK EVENT CONNECTOR
+
+Repo Python unofficial như TikTokLive có thể dùng để đọc:
+
+* comments;
+* likes;
+* gifts;
+* follows;
+* shares;
+* join;
+* viewer activity;
+* room state.
+
+Tất cả event phải được normalize.
+
+Không để Live Orchestrator phụ thuộc trực tiếp format TikTokLive.
+
+---
+
+# 20. LIVE EVENT MODEL
+
+Event chuẩn nội bộ ví dụ:
+
+LiveEvent:
+
+id
+
+sequence
+
+type
+
+source
+
+timestamp
+
+userId
+
+username
+
+displayName
+
+text
+
+amount
+
+productRef
+
+raw
+
+Event type có thể gồm:
+
+COMMENT
+
+LIKE
+
+FOLLOW
+
+SHARE
+
+GIFT
+
+VIEWER_COUNT
+
+ORDER_ACTIVITY
+
+CONNECT
+
+DISCONNECT
+
+SYSTEM
+
+Source có thể là:
+
+tiktoklive
+
+live-manager
+
+operator
+
+system
+
+---
+
+# 21. EVENT BUS
+
+Mọi event đi vào một Event Bus chung.
+
+Ví dụ:
+
+TikTokLive comment
+
+↓
+
+Normalized event
+
+↓
+
+Live Event Bus
+
+↓
+
+Comment Priority
+
+↓
+
+Live Orchestrator
+
+Hoặc:
+
+LIVE Manager order
+
+↓
+
+Order Activity Event
+
+↓
+
+Event Bus
+
+↓
+
+Order Reaction
+
+Việc này giúp sau này thêm:
+
+Shopee Live
+
+Facebook Live
+
+YouTube Live
+
+không phải viết lại Sales Brain.
+
+---
+
+# 22. TIKTOK LIVE MANAGER BROWSER
+
+TikTok LIVE Manager được xem như một nguồn dữ liệu và control surface.
+
+Phần mềm có thể mở:
+
+dedicated browser profile.
+
+Ví dụ:
+
+%APPDATA%
+
+KhepreeLivestreamAI
+
+browser-profiles
+
+tiktok-live-manager
+
+Người dùng tự login.
+
+Phần mềm không cần biết:
+
+password.
+
+Người dùng tự xử lý:
+
+* captcha;
+* OTP;
+* 2FA;
+* login challenge.
+
+---
+
+# 23. PLAYWRIGHT
+
+Playwright được dùng để:
+
+* mở LIVE Manager;
+* giữ browser profile;
+* đọc DOM;
+* quan sát comment;
+* quan sát order feed;
+* quan sát violation;
+* quan sát product panel;
+* hỗ trợ thao tác UI.
+
+Không nên hard-code selector trong business logic.
+
+---
+
+# 24. SELECTOR PACK
+
+TikTok thường xuyên thay đổi UI.
+
+Vì vậy selector phải tách thành:
+
+resources/selector-packs/
+
+Ví dụ:
+
+tiktok-live-manager-v1.json
+
+Có thể gồm:
+
+commentRows
+
+orderRows
+
+productRows
+
+violationRows
+
+buttons
+
+dialogs
+
+Sau này server Khepree có thể phát hành selector pack mới.
+
+Người dùng không cần update toàn bộ app.
+
+---
+
+# 25. BROWSER VISION FALLBACK
+
+Khi DOM thay đổi:
+
+có thể dùng screenshot + Gemini Vision để:
+
+* phát hiện UI bị thay đổi;
+* hỗ trợ diagnostic;
+* xác định khu vực comment;
+* xác định khu vực order;
+* hỗ trợ developer sửa selector.
+
+Không nên để Gemini tự click vô kiểm soát chỉ dựa trên screenshot.
+
+---
+
+# 26. AI KHÔNG ĐƯỢC CLICK TIKTOK TRỰC TIẾP
+
+Đây là nguyên tắc bắt buộc.
+
+Sai:
+
+Gemini
+
+↓
+
+click browser
+
+Đúng:
+
+Gemini
+
+↓
+
+Action Proposal
+
+↓
+
+Rule Engine
+
+↓
+
+Approval Engine
+
+↓
+
+Action Executor
+
+---
+
+# 27. ACTION PROPOSAL
+
+LLM không trả text tự do đơn giản.
+
+LLM nên trả structured JSON.
+
+Ví dụ:
+
+{
+"kind": "SPEAK",
+"speech": "Mẫu này hiện có...",
+"confidence": 0.96,
+"reason": "Khách hỏi màu sản phẩm",
+"riskTags": [],
+"nextState": "COMMENT_REPLY"
+}
+
+Các action có thể gồm:
+
+SPEAK
+
+SET_SCENE
+
+PIN_PRODUCT
+
+THANK_USER
+
+ASK_OPERATOR
+
+IGNORE
+
+Sau này có thể thêm:
+
+SHOW_PRODUCT
+
+SWITCH_PRODUCT
+
+SHOW_SIZE_CHART
+
+DISPLAY_COUPON
+
+HUMAN_TAKEOVER_REQUEST
+
+---
+
+# 28. APPROVAL ENGINE
+
+Đây là module quan trọng nhất của supervised automation.
+
+AI tạo đề xuất.
+
+Approval Engine quyết định:
+
+* tự thực hiện;
+* chờ người dùng;
+* từ chối;
+* yêu cầu sửa.
+
+Ví dụ:
+
+AI:
+
+"Giá hiện tại là 299.000đ."
+
+Confidence:
+
+99%
+
+Phần mềm hiển thị:
+
+Tự động nói sau:
+
+3.5 giây
+
+Người dùng có thể:
+
+APPROVE
+
+EDIT
+
+REJECT
+
+ESC CANCEL
+
+---
+
+# 29. 4 CHẾ ĐỘ TỰ ĐỘNG
+
+Phần mềm có 4 mode:
+
+## MANUAL_ASSIST
+
+AI chỉ gợi ý.
+
+Người dùng quyết định toàn bộ.
+
+## ASSISTED
+
+AI chuẩn bị.
+
+Người dùng approve từng action.
+
+## SUPERVISED_AUTO
+
+Mode mặc định.
+
+Các action an toàn + confidence cao:
+
+tự chạy sau countdown.
+
+Các action rủi ro:
+
+chuyển người dùng.
+
+## FULL_AUTO
+
+AI tự quyết phần lớn.
+
+Phải feature-gate.
+
+Không nên mặc định bật.
+
+---
+
+# 30. SUPERVISED_AUTO LÀ MODE CHÍNH
+
+Đây là mode định vị sản phẩm.
+
+Không cố quảng cáo rằng:
+
+"AI livestream hoàn toàn không cần người."
+
+Thay vào đó:
+
+"AI làm phần lớn công việc, bạn chỉ cần giám sát."
+
+Đây vừa thực tế vừa an toàn hơn.
+
+---
+
+# 31. CONFIDENCE
+
+Mỗi AI proposal phải có confidence.
+
+Ví dụ:
+
+0.98
+
+0.84
+
+0.51
+
+Ngưỡng mặc định foundation:
+
+0.92
+
+Nếu:
+
+confidence >= threshold
+
+và không có risk tag nghiêm trọng
+
+thì có thể auto-approve.
+
+---
+
+# 32. RISK TAGS
+
+Ví dụ:
+
+medical
+
+legal
+
+refund
+
+warranty_dispute
+
+unknown_product_fact
+
+regulated_claim
+
+price_unknown
+
+stock_unknown
+
+shipping_unknown
+
+Các risk tag nhất định không bao giờ auto.
+
+---
+
+# 33. POLICY GUARD
+
+LLM có thể hallucinate.
+
+Vì vậy cần một Policy Guard chạy sau LLM.
+
+Pipeline:
+
+LLM
+
+↓
+
+Action Proposal
+
+↓
+
+Policy Guard
+
+↓
+
+Approval Engine
+
+Policy Guard kiểm tra:
+
+* giá có nguồn không;
+* size có nguồn không;
+* stock có nguồn không;
+* claim có bị cấm không;
+* y tế;
+* pháp lý;
+* refund;
+* warranty;
+* từ khóa rủi ro.
+
+---
+
+# 34. PRODUCT DNA
+
+AI không được tự đoán thông tin sản phẩm.
+
+Mỗi sản phẩm phải có Product DNA.
+
+Product DNA là nguồn dữ liệu chuẩn.
+
+Có thể gồm:
+
+id
+
+title
+
+description
+
+price
+
+currency
+
+variants
+
+sizes
+
+colors
+
+materials
+
+features
+
+benefits
+
+shipping
+
+warranty
+
+stock
+
+images
+
+video
+
+facts
+
+allowedClaims
+
+forbiddenClaims
+
+faq
+
+---
+
+# 35. PRODUCT REALITY LOCK
+
+Generative AI không được tự thay đổi thực tế sản phẩm.
+
+Ví dụ không được:
+
+* tự đổi màu;
+* tự đổi shape;
+* tự bịa feature;
+* tự bịa size;
+* tự bịa công dụng;
+* tự bịa giá.
+
+Chỉ được nói từ Product DNA.
+
+---
+
+# 36. PRODUCT IMPORT
+
+Các hướng có thể hỗ trợ:
+
+* URL TikTok product;
+* browser scrape;
+* LIVE Manager product list;
+* CSV;
+* Excel;
+* nhập thủ công;
+* copy/paste description.
+
+Sau import:
+
+Gemini hỗ trợ tạo Product DNA.
+
+Nhưng người dùng phải có khả năng kiểm tra/sửa.
+
+---
+
+# 37. AUTO PRODUCT AUDITION
+
+Một feature tương lai rất giá trị:
+
+AI phân tích sản phẩm trước khi livestream.
+
+Ví dụ:
+
+Khả năng demo: 8/10
+
+Khả năng mua bốc đồng: 7/10
+
+Chất lượng hình ảnh: 9/10
+
+FAQ completeness: 5/10
+
+Policy risk: 2/10
+
+Live Score: 82/100
+
+Sau đó đề xuất:
+
+nên livestream / chưa nên livestream.
+
+---
+
+# 38. SALES BRAIN
+
+Digital avatar không phải giá trị lõi lớn nhất.
+
+Giá trị lõi:
+
+**Sales Brain**
+
+Sales Brain chịu trách nhiệm:
+
+* hiểu comment;
+* phân loại intent;
+* xác định người có nhu cầu mua;
+* lấy Product DNA;
+* chọn sales angle;
+* chọn câu trả lời;
+* chọn CTA;
+* chọn state tiếp theo;
+* phát hiện objection;
+* chuyển human nếu cần.
+
+---
+
+# 39. COMMENT PROCESSING PIPELINE
+
+Comment:
+
+"70kg mặc size nào?"
+
+Pipeline:
+
+TikTok event
+
+↓
+
+Spam filter
+
+↓
+
+Intent classifier
+
+↓
+
+Product resolver
+
+↓
+
+Product DNA retrieval
+
+↓
+
+LLM
+
+↓
+
+Policy Guard
+
+↓
+
+Confidence check
+
+↓
+
+Approval Engine
+
+↓
+
+Speech
+
+---
+
+# 40. COMMENT PRIORITY
+
+Không thể trả lời tất cả comment.
+
+Cần scoring.
+
+Ví dụ:
+
+Ready to buy:
+
++100
+
+Product question:
+
++80
+
+Objection:
+
++70
+
+Size/variant:
+
++60
+
+Greeting:
+
++20
+
+Spam:
+
+-100
+
+Operator UI chỉ ưu tiên comment quan trọng.
+
+---
+
+# 41. HUMAN PRIORITY QUEUE
+
+Ví dụ:
+
+@Anna
+
+Intent: Ready to buy
+
+Score: 98
+
+@Mike
+
+Intent: Size
+
+Score: 91
+
+@Jane
+
+Intent: Price
+
+Score: 86
+
+@Bob
+
+Intent: Greeting
+
+Score: 20
+
+Người trực tập trung vào top priority.
+
+---
+
+# 42. SALES STATE MACHINE
+
+AI livestream không được nói ngẫu nhiên.
+
+Nên hoạt động theo state.
+
+Các state đã định hướng:
+
+IDLE
+
+WELCOME
+
+PRODUCT_INTRO
+
+FEATURE
+
+BENEFIT
+
+DEMO
+
+SOCIAL_PROOF
+
+PRICE
+
+OBJECTION
+
+COMMENT_REPLY
+
+ORDER_REACTION
+
+CTA
+
+PRODUCT_SWITCH
+
+PAUSED
+
+---
+
+# 43. STATE FLOW
+
+Ví dụ:
+
+WELCOME
+
+↓
+
+PRODUCT INTRO
+
+↓
+
+FEATURE
+
+↓
+
+BENEFIT
+
+↓
+
+DEMO
+
+↓
+
+PRICE
+
+↓
+
+CTA
+
+Nếu có comment:
+
+→ COMMENT_REPLY
+
+Nếu có đơn:
+
+→ ORDER_REACTION
+
+Sau đó quay lại flow bán hàng.
+
+---
+
+# 44. LIVE MEMORY
+
+AI phải nhớ những gì vừa xảy ra.
+
+Có ít nhất:
+
+Short-term memory
+
+Session memory
+
+Product memory
+
+AI cần nhớ:
+
+* vừa nói câu gì;
+* vừa giới thiệu feature nào;
+* CTA nào vừa sử dụng;
+* sản phẩm hiện tại;
+* comment vừa trả lời;
+* giá;
+* campaign;
+* state hiện tại.
+
+Mục tiêu:
+
+tránh lặp câu liên tục.
+
+---
+
+# 45. SALES CONTENT POOL
+
+Không nên tạo một script dài rồi loop.
+
+Thay vào đó có content pool.
+
+Ví dụ:
+
+50 hooks
+
+30 benefit lines
+
+20 price explanations
+
+20 objection responses
+
+20 CTAs
+
+20 product transitions
+
+50 FAQ responses
+
+AI chọn nội dung theo context.
+
+---
+
+# 46. ORDER ACTIVITY
+
+Không phụ thuộc TikTok Open API.
+
+Có thể phát hiện order thông qua:
+
+TikTok LIVE Manager
+
+↓
+
+DOM Observer
+
+↓
+
+Activity Feed
+
+↓
+
+Normalized ORDER_ACTIVITY event
+
+Sau đó:
+
+ORDER_ACTIVITY
+
+↓
+
+Sales Brain
+
+↓
+
+THANK YOU / ORDER REACTION
+
+---
+
+# 47. ORDER VERIFICATION
+
+Có thể có hai cấp:
+
+Candidate order event
+
+↓
+
+Verification
+
+Nguồn verification có thể là:
+
+Seller Center UI.
+
+Không nhất thiết bắt buộc ngay V1.
+
+---
+
+# 48. MEDIA ENGINE
+
+Media Engine độc lập với Sales Brain.
+
+Không hard-code MuseTalk vào business logic.
+
+Tạo interface:
+
+MediaProvider
+
+Có thể gồm:
+
+health()
+
+speak()
+
+stopSpeech()
+
+setScene()
+
+setEmotion()
+
+setGesture()
+
+interrupt()
+
+---
+
+# 49. DIGITAL HUMAN
+
+Digital human là một adapter.
+
+Có thể dùng:
+
+LiveTalking
+
+MuseTalk
+
+Wav2Lip
+
+các engine mới trong tương lai
+
+Không để core phụ thuộc một engine duy nhất.
+
+---
+
+# 50. AVATAR MOVEMENT
+
+Avatar tốt không chỉ nhép miệng.
+
+Có thể cần:
+
+lip movement
+
+blink
+
+eye movement
+
+head movement
+
+breathing
+
+shoulder movement
+
+hand gesture
+
+body idle
+
+emotion
+
+camera movement
+
+---
+
+# 51. PRE-RECORDED ACTION SEGMENTS
+
+Để tiết kiệm GPU:
+
+không cần generate toàn bộ body 30 FPS realtime.
+
+Có thể chuẩn bị:
+
+idle_01
+
+idle_02
+
+idle_03
+
+point_left
+
+point_right
+
+show_product
+
+happy
+
+thinking
+
+thank_you
+
+look_camera
+
+Realtime chỉ xử lý:
+
+face/lip/transition.
+
+---
+
+# 52. SCENE ENGINE
+
+Livestream không nên chỉ có avatar đứng yên.
+
+Có nhiều scene:
+
+Host medium
+
+Host + product
+
+Product close-up
+
+Features
+
+Variant comparison
+
+How to use
+
+Comment reply
+
+Offer
+
+Order reaction
+
+Host full body
+
+AI có thể đề xuất scene.
+
+Action Executor quyết định.
+
+---
+
+# 53. TTS
+
+TTS phải là adapter.
+
+Có thể hỗ trợ:
+
+CosyVoice
+
+GPT-SoVITS
+
+engine local khác
+
+cloud TTS tùy chọn
+
+Không hard-code.
+
+---
+
+# 54. VIRTUAL CAMERA
+
+Video output:
+
+Avatar
+
+↓
+
+Scene Renderer
+
+↓
+
+FFmpeg
+
+↓
+
+Virtual Camera
+
+↓
+
+TikTok LIVE Manager
+
+Audio output:
+
+TTS
+
+↓
+
+Virtual Audio Device
+
+↓
+
+TikTok microphone input
+
+Video và audio là hai pipeline khác nhau.
+
+---
+
+# 55. HUMAN TAKEOVER
+
+Tính năng bắt buộc.
+
+Có hotkey:
+
+ví dụ HOLD SPACE hoặc F8.
+
+Khi takeover:
+
+STOP TTS
+
+AI speech stop
+
+Human mic ON
+
+Sau khi thả:
+
+Human mic OFF
+
+AI resume
+
+Ngoài ra cần:
+
+Emergency Stop.
+
+---
+
+# 56. OPERATOR CONSOLE
+
+Đây là màn hình chính.
+
+Có thể chia:
+
+## LIVE Status
+
+Live:
+
+Đang chạy / đã dừng
+
+## Não AI
+
+Gemini:
+
+Hoạt động / chậm / cần đăng nhập
+
+## TikTok
+
+Connected / disconnected
+
+## Media
+
+Avatar / voice / camera
+
+## Approval Queue
+
+AI đang chờ xác nhận gì
+
+## Priority Comments
+
+Khách hàng quan trọng
+
+## Current Product
+
+Sản phẩm đang bán
+
+## Live State
+
+WELCOME
+
+FEATURE
+
+CTA
+
+...
+
+---
+
+# 57. OPERATOR EXPERIENCE
+
+Mục tiêu UX:
+
+Người vận hành chỉ cần nhìn một dashboard.
+
+Không cần mở:
+
+* terminal;
+* Python console;
+* OBS config;
+* API dashboard;
+* JSON.
+
+Mọi vấn đề kỹ thuật phải được diễn giải.
+
+Ví dụ:
+
+Sai:
+
+CUDA initialization failed.
+
+Đúng:
+
+"AI Avatar chưa thể khởi động card đồ họa.
+
+Bạn hãy thử:
+
+1. đóng các ứng dụng đang dùng GPU;
+
+2. khởi động lại Khepree Livestream AI;
+
+3. nếu vẫn lỗi, bấm 'Kiểm tra máy'."
+
+Sau đó mới có:
+
+"Chi tiết kỹ thuật"
+
+cho advanced user.
+
+---
+
+# 58. ONBOARDING
+
+Lần đầu mở phần mềm:
+
+Bước 1:
+
+Chào mừng đến với Khepree Livestream AI
+
+Giải thích:
+
+"AI sẽ hỗ trợ bạn đọc bình luận, tư vấn khách và điều phối livestream. Bạn vẫn là người kiểm soát cuối cùng."
+
+Bước 2:
+
+Đăng nhập Khepree
+
+Bước 3:
+
+Kết nối Gemini
+
+Bước 4:
+
+Thêm sản phẩm
+
+Bước 5:
+
+Kết nối TikTok
+
+Bước 6:
+
+Kiểm tra microphone/camera
+
+Bước 7:
+
+Chạy thử
+
+Bước 8:
+
+Bắt đầu livestream
+
+---
+
+# 59. USER EDUCATION SYSTEM
+
+Mỗi module nên có:
+
+"Mục này dùng để làm gì?"
+
+Ví dụ:
+
+## Não AI Gemini
+
+"Dùng để đọc bình luận và soạn câu trả lời."
+
+## Kết nối TikTok
+
+"Dùng để nhận bình luận và hoạt động livestream."
+
+## Thông tin sản phẩm chuẩn
+
+"Là nơi AI lấy thông tin sản phẩm. AI không được phép tự đoán ngoài dữ liệu này."
+
+## Xác nhận của AI
+
+"AI sẽ hỏi bạn trước khi thực hiện những hành động quan trọng."
+
+---
+
+# 60. HEALTH MONITOR
+
+Có Runtime Health Monitor.
+
+Theo dõi:
+
+Gemini
+
+TikTok connector
+
+Playwright browser
+
+Database
+
+TTS
+
+Avatar
+
+Virtual camera
+
+Virtual audio
+
+GPU
+
+CPU
+
+RAM
+
+VRAM
+
+FPS
+
+Latency
+
+Internet
+
+---
+
+# 61. WATCHDOG
+
+Nếu module lỗi:
+
+Gemini lỗi
+
+→ fallback brain
+
+Avatar lỗi
+
+→ safe scene
+
+TTS lỗi
+
+→ human takeover
+
+TikTok event lỗi
+
+→ LIVE Manager observer
+
+LIVE Manager DOM lỗi
+
+→ selector diagnostic
+
+GPU quá tải
+
+→ giảm quality
+
+---
+
+# 62. FAIL-SAFE
+
+Không để hệ thống tiếp tục hallucinate khi thiếu dữ liệu.
+
+Ví dụ:
+
+Không lấy được giá:
+
+AI không được nói giá.
+
+Không lấy được stock:
+
+AI không được nói còn hàng.
+
+Không lấy được shipping:
+
+AI không được tự đoán thời gian giao.
+
+Phải nói:
+
+"Thông tin này cần người bán xác nhận."
+
+---
+
+# 63. CONNECTOR ARCHITECTURE
+
+Tất cả integration bên ngoài phải là adapter.
+
+Ví dụ:
+
+ILLMProvider
+
+ITikTokProvider
+
+IMediaProvider
+
+ITTSEngine
+
+IAvatarEngine
+
+IStreamingEngine
+
+IProductProvider
+
+ILiveEventProvider
+
+Ngày mai thay repo:
+
+không phá business core.
+
+---
+
+# 64. UNOFFICIAL REPOSITORIES
+
+Dự án chấp nhận repo unofficial nếu:
+
+* hiệu quả;
+* miễn phí;
+* ổn định đủ;
+* có thể thay thế.
+
+Nhưng phải:
+
+* cô lập;
+* health check;
+* restart;
+* timeout;
+* fallback.
+
+Không để một repo reverse-engineered trở thành dependency không thể thay.
+
+---
+
+# 65. DEPENDENCY COST STRATEGY
+
+Ưu tiên:
+
+open source
+
+local execution
+
+free GitHub repos
+
+Mục tiêu:
+
+chi phí mỗi giờ livestream phía nhà cung cấp gần bằng 0.
+
+---
+
+# 66. TEMPLATE SYSTEM TRONG TƯƠNG LAI
+
+Một hướng kinh doanh lớn:
+
+Khepree Livestream AI
+
+*
+
+Live Template Marketplace
+
+Template không chỉ là background.
+
+Template chứa:
+
+scene design
+
+camera
+
+avatar position
+
+sales sequence
+
+gesture
+
+product placement
+
+CTA behavior
+
+transition
+
+sales personality
+
+Ví dụ:
+
+Beauty Live
+
+Fashion Live
+
+Kitchen Live
+
+Gadget Live
+
+Home Decor Live
+
+Pet Product Live
+
+Jewelry Live
+
+---
+
+# 67. AVATAR MARKETPLACE
+
+Có thể bán avatar pack:
+
+Female US Host
+
+Male US Host
+
+Asian Female Host
+
+Gen-Z Host
+
+Luxury Host
+
+Friendly Mom
+
+Tech Reviewer
+
+Phải đảm bảo:
+
+voice/face có quyền sử dụng.
+
+---
+
+# 68. ANALYTICS
+
+Tương lai có:
+
+comments/minute
+
+purchase intent
+
+orders
+
+conversion
+
+best hooks
+
+best CTA
+
+best product sequence
+
+response latency
+
+AI confidence
+
+human interventions
+
+---
+
+# 69. CONVERSION BRAIN
+
+Dài hạn:
+
+AI học xem cách bán nào hiệu quả.
+
+Ví dụ:
+
+Hook A:
+
+conversion 3.2%
+
+Hook B:
+
+conversion 5.7%
+
+System tăng xác suất sử dụng Hook B.
+
+Tương tự:
+
+CTA
+
+scene
+
+sales angle
+
+reply length
+
+product order
+
+voice energy
+
+---
+
+# 70. MULTI-LIVE TRONG TƯƠNG LAI
+
+Agency mode:
+
+LIVE 1
+
+AI autonomous 96%
+
+LIVE 2
+
+Human required
+
+LIVE 3
+
+AI autonomous 97%
+
+Operator chỉ xử lý LIVE có exception.
+
+---
+
+# 71. FOUNDATION HIỆN ĐÃ CÓ
+
+Repository foundation đã được tạo và đưa lên:
+
+https://github.com/trongtm97/khepree-livestream-ai
+
+Foundation ban đầu có:
+
+* Electron;
+* React;
+* TypeScript;
+* Vite/Electron Forge;
+* SQLite;
+* Event Bus;
+* Sales State Machine;
+* Approval Engine;
+* Policy Guard;
+* Comment Priority;
+* Live Orchestrator;
+* Khepree licensing foundation;
+* Gemini Python worker;
+* TikTokLive Python worker;
+* LIVE Manager Playwright observer scaffold;
+* Mock LLM;
+* Mock Media;
+* Operator dashboard;
+* Product DNA database foundation;
+* docs;
+* AGENTS.md.
+
+---
+
+# 72. FOUNDATION KHÔNG CÓ NGHĨA LÀ PRODUCTION READY
+
+Một số phần hiện mới là sườn.
+
+Chưa được coi là hoàn thiện:
+
+Khepree production integration
+
+Gemini onboarding thật
+
+TikTok smoke test thật
+
+TikTok DOM selector thật
+
+LIVE Manager order parsing
+
+Product importer
+
+LiveTalking integration
+
+MuseTalk integration
+
+TTS
+
+Virtual camera
+
+Virtual audio
+
+Installer production
+
+Code signing
+
+Auto update
+
+Policy packs thật
+
+Selector packs thật
+
+AI tiếp theo không được nhầm foundation với sản phẩm hoàn chỉnh.
+
+---
+
+# 73. CẤU TRÚC FOUNDATION
+
+Các khu vực quan trọng:
+
+src/main/
+
+Electron Main + core logic
+
+src/preload/
+
+IPC boundary
+
+src/renderer/
+
+React UI
+
+src/shared/
+
+shared types/contracts
+
+src/main/live/
+
+Live Orchestrator
+
+State Machine
+
+Approval Engine
+
+Policy Guard
+
+Comment Priority
+
+src/main/connectors/
+
+LLM
+
+TikTok
+
+Media
+
+src/main/khepree/
+
+Khepree licensing
+
+workers/
+
+Python sidecars
+
+resources/
+
+selector packs
+
+policy packs
+
+docs/
+
+architecture
+
+integration
+
+project state
+
+roadmap
+
+---
+
+# 74. AGENTS.MD
+
+Repository có AGENTS.md.
+
+Các coding agent phải đọc trước khi sửa.
+
+Các nguyên tắc quan trọng:
+
+Không đưa secret xuống renderer.
+
+Không để Gemini điều khiển TikTok trực tiếp.
+
+Không phá Event Bus.
+
+Không phá provider interface.
+
+Không hard-code TikTok selector trong business logic.
+
+Không để AI bịa product facts.
+
+SUPERVISED_AUTO là default.
+
+Production Khepree phải fail-closed.
+
+---
+
+# 75. FAIL-CLOSED KHEPREE
+
+Nếu license không hợp lệ:
+
+không chạy protected features.
+
+Không dùng fail-open cho production.
+
+Ví dụ:
+
+Khepree unreachable + chưa có valid state
+
+→ không Start AI.
+
+License revoked
+
+→ protected action stop.
+
+---
+
+# 76. KHEPREE FEATURE GATING
+
+Feature có thể dùng trong tương lai:
+
+supervised_auto
+
+full_auto
+
+gemini_connector
+
+tiktok_connector
+
+avatar_engine
+
+voice_engine
+
+multi_live
+
+max_accounts
+
+template_marketplace
+
+Tên cuối cùng phải bám theo cấu trúc feature hiện có trong Khepree.
+
+Không tự tạo schema riêng nếu Khepree đã có.
+
+---
+
+# 77. DEVELOPMENT ORDER ĐỀ XUẤT
+
+Không nên làm mọi thứ cùng lúc.
+
+Thứ tự ưu tiên:
+
+PHASE 1
+
+Hoàn thiện Khepree licensing thật.
+
+PHASE 2
+
+Hoàn thiện giao diện tiếng Việt + onboarding.
+
+PHASE 3
+
+Gemini connector thật.
+
+PHASE 4
+
+TikTokLive connector thật.
+
+PHASE 5
+
+LIVE Manager browser observer.
+
+PHASE 6
+
+Product DNA/importer.
+
+PHASE 7
+
+Sales Brain + structured Gemini output.
+
+PHASE 8
+
+Approval Engine production UX.
+
+PHASE 9
+
+TTS.
+
+PHASE 10
+
+Avatar + MuseTalk/LiveTalking.
+
+PHASE 11
+
+Virtual camera/audio.
+
+PHASE 12
+
+TikTok LIVE full workflow.
+
+PHASE 13
+
+Analytics.
+
+PHASE 14
+
+Template marketplace.
+
+---
+
+# 78. PHASE 1 — KHEPREE
+
+Cần test toàn flow thật:
+
+Login
+
+↓
+
+PKCE callback
+
+↓
+
+Session exchange
+
+↓
+
+Device binding
+
+↓
+
+Entitlement
+
+↓
+
+Signed lease
+
+↓
+
+Start protected feature
+
+↓
+
+Heartbeat
+
+↓
+
+Revoke
+
+↓
+
+App khóa protected feature
+
+Không giả định contract.
+
+Phải đọc repo:
+
+khepree
+
+và:
+
+khepree-noval-ai
+
+---
+
+# 79. PHASE 2 — VIETNAMESE UX
+
+Cần:
+
+localization architecture.
+
+Cần:
+
+onboarding.
+
+Cần:
+
+help text.
+
+Cần:
+
+diagnostic bằng ngôn ngữ phổ thông.
+
+Cần:
+
+Setup Wizard.
+
+---
+
+# 80. PHASE 3 — GEMINI
+
+Cần:
+
+Connect Gemini
+
+Disconnect
+
+Health
+
+Model selection
+
+Cookie/session storage
+
+Re-login
+
+Generate structured proposal
+
+Timeout
+
+Retry
+
+Circuit breaker
+
+Fallback
+
+---
+
+# 81. PHASE 4 — TIKTOKLIVE
+
+Cần:
+
+username input
+
+connect
+
+disconnect
+
+reconnect
+
+comments
+
+likes
+
+follow
+
+share
+
+gift
+
+viewer metrics
+
+event dedup
+
+sequence
+
+health
+
+---
+
+# 82. PHASE 5 — LIVE MANAGER
+
+Cần:
+
+dedicated browser profile
+
+login helper
+
+persistent session
+
+DOM observer
+
+selector pack
+
+comment feed
+
+order feed
+
+violation feed
+
+product feed
+
+diagnostic screenshot
+
+---
+
+# 83. PHASE 6 — PRODUCT DNA
+
+Cần:
+
+manual product
+
+URL importer
+
+browser importer
+
+CSV/Excel importer
+
+TikTok listing importer
+
+AI normalization
+
+user review
+
+facts
+
+variants
+
+price
+
+stock
+
+shipping
+
+FAQ
+
+claim rules
+
+---
+
+# 84. PHASE 7 — SALES BRAIN
+
+Gemini prompt phải structured.
+
+Input:
+
+Current State
+
+Live Event
+
+Product DNA
+
+Recent Memory
+
+Policy Pack
+
+Output:
+
+Action Proposal JSON
+
+Không output prose lung tung.
+
+---
+
+# 85. PHASE 8 — APPROVAL UX
+
+Approval card:
+
+người hỏi
+
+câu hỏi
+
+AI dự định trả lời
+
+confidence
+
+reason
+
+risk tags
+
+countdown
+
+Buttons:
+
+Nói ngay
+
+Sửa
+
+Bỏ qua
+
+Dừng tự động
+
+---
+
+# 86. PHASE 9 — TTS
+
+Đầu tiên chỉ cần một local TTS ổn định.
+
+Sau đó mới:
+
+voice cloning
+
+voice packs
+
+marketplace.
+
+---
+
+# 87. PHASE 10 — AVATAR
+
+Không để avatar block product core.
+
+Nếu media engine chưa chạy:
+
+Sales Brain vẫn phải test được.
+
+Avatar là adapter.
+
+---
+
+# 88. PHASE 11 — STREAM OUTPUT
+
+Cần test:
+
+video sync
+
+audio sync
+
+virtual camera
+
+virtual audio
+
+latency
+
+interrupt
+
+human takeover
+
+---
+
+# 89. UI PHẢI CÓ BASIC VÀ ADVANCED
+
+Basic Mode:
+
+dành cho seller phổ thông.
+
+Advanced:
+
+dành cho kỹ thuật.
+
+Basic chỉ cần:
+
+Kết nối
+
+Sản phẩm
+
+AI
+
+Livestream
+
+Khách hàng
+
+Xác nhận
+
+Advanced có:
+
+latency
+
+VRAM
+
+worker
+
+logs
+
+selectors
+
+events
+
+raw JSON
+
+---
+
+# 90. LOGGING
+
+Phải có structured logs.
+
+Nhưng không log secret.
+
+Không log:
+
+refresh token
+
+Google cookies
+
+TikTok cookies
+
+password.
+
+Có thể log:
+
+event type
+
+latency
+
+state
+
+proposal id
+
+connector status
+
+error code
+
+---
+
+# 91. DIAGNOSTICS
+
+Có nút:
+
+"Kiểm tra hệ thống"
+
+Output:
+
+Khepree: OK
+
+Gemini: OK
+
+TikTok: OK
+
+Microphone: OK
+
+Camera: OK
+
+GPU: OK
+
+Avatar: Not configured
+
+Sau đó:
+
+"Xuất báo cáo lỗi"
+
+Báo cáo không chứa secret.
+
+---
+
+# 92. AUTO UPDATE
+
+Dài hạn cần:
+
+App update
+
+Selector pack update
+
+Policy pack update
+
+Connector pack update
+
+Không phải tất cả update đều cần installer mới.
+
+---
+
+# 93. CONNECTOR PACK
+
+Gemini connector nên update độc lập.
+
+TikTok connector cũng vậy.
+
+Nếu upstream thay đổi:
+
+chỉ update connector.
+
+---
+
+# 94. POLICY PACK
+
+Policy theo thị trường.
+
+Ví dụ:
+
+Vietnam
+
+US
+
+Indonesia
+
+Thailand
+
+Policy có thể điều khiển:
+
+AI voice allowed
+
+auto response allowed
+
+claim categories
+
+high-risk categories
+
+full auto availability
+
+---
+
+# 95. KHÔNG CỐ NÉ TIKTOK
+
+Mục tiêu là:
+
+automation hợp lý + human supervision.
+
+Không xây sản phẩm dựa trên:
+
+bypass detection
+
+fake engagement
+
+fake viewers
+
+spam comments
+
+account evasion
+
+Mục tiêu:
+
+giúp seller vận hành thật hiệu quả hơn.
+
+---
+
+# 96. COMMERCIAL MODEL
+
+Dài hạn có thể:
+
+Software License
+
+Starter
+
+Pro
+
+Agency
+
+Có thể gate:
+
+number of TikTok accounts
+
+full auto
+
+avatar
+
+multi-live
+
+advanced analytics
+
+Ngoài ra:
+
+Template marketplace
+
+Avatar marketplace
+
+Voice packs
+
+---
+
+# 97. PRODUCT POSITIONING
+
+Không nên chỉ gọi:
+
+"AI Avatar Livestream"
+
+Nên định vị:
+
+**Khepree Livestream AI**
+
+"Trợ lý AI điều phối livestream bán hàng."
+
+Thông điệp:
+
+"AI hỗ trợ. Người bán kiểm soát."
+
+Hoặc:
+
+"Một người vận hành livestream như một đội."
+
+---
+
+# 98. TIÊU CHÍ THÀNH CÔNG CỦA V1
+
+V1 chưa cần avatar đẹp nhất thế giới.
+
+V1 thành công nếu:
+
+1. người dùng login Khepree được;
+
+2. kết nối Gemini được;
+
+3. kết nối TikTok được;
+
+4. đọc comment realtime được;
+
+5. nhận biết comment mua hàng;
+
+6. lấy đúng Product DNA;
+
+7. AI tạo câu trả lời;
+
+8. người dùng duyệt;
+
+9. hệ thống thực hiện lời nói;
+
+10. người dùng takeover được;
+
+11. không hallucinate product info;
+
+12. UI dễ hiểu.
+
+---
+
+# 99. TIÊU CHÍ V2
+
+V2:
+
+avatar
+
+scene
+
+gesture
+
+TTS tốt
+
+order detection
+
+product switching
+
+auto approval
+
+analytics
+
+---
+
+# 100. TIÊU CHÍ V3
+
+V3:
+
+multi-live
+
+agency
+
+conversion optimization
+
+template marketplace
+
+avatar marketplace
+
+more platforms
+
+---
+
+# 101. NGUYÊN TẮC CHO AI CODING AGENT TIẾP THEO
+
+AI coding agent phải:
+
+1. đọc toàn repository trước khi sửa;
+
+2. đọc AGENTS.md;
+
+3. đọc docs/ARCHITECTURE.md;
+
+4. đọc PROJECT_STATE;
+
+5. không viết lại kiến trúc tùy tiện;
+
+6. ưu tiên hoàn thiện module hiện tại;
+
+7. không hard-code secret;
+
+8. không phá Khepree licensing;
+
+9. không để renderer có privilege;
+
+10. giữ connector replaceable;
+
+11. test sau mỗi phase;
+
+12. không nói một module production-ready nếu chưa smoke test thật.
+
+---
+
+# 102. CÁCH AI NÊN THỰC HIỆN MỖI TASK
+
+Trước khi code:
+
+1. Phân tích code hiện tại.
+
+2. Xác định module liên quan.
+
+3. Xác định dependency.
+
+4. Xác định thay đổi database nếu có.
+
+5. Xác định backward compatibility.
+
+Sau khi code:
+
+1. TypeScript typecheck.
+
+2. Python compile.
+
+3. Unit test.
+
+4. Foundation test.
+
+5. Smoke test.
+
+6. Update documentation.
+
+7. Update CHANGELOG.
+
+8. Liệt kê file đã sửa.
+
+9. Liệt kê phần chưa test được.
+
+---
+
+# 103. KHÔNG FAKE TEST
+
+Nếu không có TikTok account:
+
+ghi:
+
+"Chưa smoke test bằng TikTok thật."
+
+Nếu không có Gemini session:
+
+ghi:
+
+"Connector implementation complete, real account smoke pending."
+
+Nếu chưa build Windows installer:
+
+không nói:
+
+"Production ready."
+
+---
+
+# 104. ƯU TIÊN CHẤT LƯỢNG HƠN TỐC ĐỘ
+
+Đây là phần mềm thương mại.
+
+Architecture phải:
+
+modular
+
+maintainable
+
+testable
+
+recoverable
+
+replaceable
+
+observable
+
+Không làm kiểu:
+
+một file 5.000 dòng.
+
+---
+
+# 105. TỔNG KẾT KIẾN TRÚC
+
+Khepree Livestream AI có 6 lớp lớn:
+
+## LAYER 1 — PLATFORM
+
+Khepree
+
+Account
+
+License
+
+Subscription
+
+Device
+
+Entitlement
+
+## LAYER 2 — DESKTOP
+
+Electron
+
+React
+
+IPC
+
+SQLite
+
+## LAYER 3 — INTELLIGENCE
+
+Gemini
+
+Product Brain
+
+Sales Brain
+
+Policy Guard
+
+Approval Engine
+
+State Machine
+
+## LAYER 4 — LIVE CONNECTIVITY
+
+TikTokLive
+
+Playwright
+
+LIVE Manager
+
+Event Bus
+
+## LAYER 5 — MEDIA
+
+TTS
+
+Avatar
+
+MuseTalk
+
+LiveTalking
+
+FFmpeg
+
+Virtual Camera
+
+Virtual Audio
+
+## LAYER 6 — HUMAN OPERATOR
+
+Dashboard
+
+Approval
+
+Edit
+
+Reject
+
+Takeover
+
+Emergency stop
+
+---
+
+# 106. LUỒNG HOÀN CHỈNH TỪ KHI MỞ APP
+
+User mở app
+
+↓
+
+Khepree License Check
+
+↓
+
+Onboarding/Setup
+
+↓
+
+Connect Gemini
+
+↓
+
+Connect TikTok
+
+↓
+
+Load Product DNA
+
+↓
+
+System Health Check
+
+↓
+
+Prepare Live
+
+↓
+
+Start AI
+
+Trong LIVE:
+
+TikTok Event
+
+↓
+
+Event Bus
+
+↓
+
+Priority
+
+↓
+
+Sales State Machine
+
+↓
+
+Product Brain
+
+↓
+
+Gemini
+
+↓
+
+Action Proposal
+
+↓
+
+Policy Guard
+
+↓
+
+Approval Engine
+
+↓
+
+Auto / Human Approve
+
+↓
+
+Speech / Scene / Action
+
+↓
+
+Media Engine
+
+↓
+
+Virtual Camera + Audio
+
+↓
+
+TikTok
+
+Người dùng luôn có thể:
+
+EDIT
+
+REJECT
+
+STOP
+
+TAKE OVER
+
+---
+
+# 107. MỤC TIÊU CUỐI CÙNG
+
+Không phải tạo một bot nói liên tục.
+
+Mục tiêu là xây:
+
+**Khepree Livestream AI — nền tảng AI điều phối toàn bộ quy trình livestream bán hàng với con người giám sát.**
+
+AI đảm nhiệm phần lớn thao tác lặp lại.
+
+Người bán tập trung vào:
+
+* quyết định;
+* ngoại lệ;
+* chiến lược;
+* kiểm soát.
+
+Dài hạn hệ thống phải đủ linh hoạt để hỗ trợ:
+
+TikTok
+
+Shopee Live
+
+Facebook
+
+YouTube
+
+và các nền tảng live commerce khác.
+
+---
+
+# 108. CHỈ THỊ CHO AI TIẾP NHẬN DỰ ÁN
+
+Khi nhận tài liệu này và repository:
+
+https://github.com/trongtm97/khepree-livestream-ai
+
+hãy coi nội dung trên là context kiến trúc đã được chủ dự án chốt.
+
+Không tự ý thay đổi:
+
+* ElectronJS làm nền tảng desktop;
+* Khepree làm licensing/account platform;
+* Gemini Web là LLM chính giai đoạn đầu;
+* TikTok Open API không phải dependency bắt buộc;
+* repo unofficial được chấp nhận;
+* SUPERVISED_AUTO là mode chính;
+* AI không được trực tiếp điều khiển TikTok;
+* Product DNA là nguồn sự thật;
+* mọi hành động AI phải qua validation/approval;
+* UI tiếng Việt dành cho người phổ thông;
+* local-first để giảm chi phí vận hành.
+
+Trước khi phát triển phase tiếp theo:
+
+hãy đọc code thực tế và đối chiếu tài liệu này với trạng thái repository hiện tại.
+
+Nếu code thực tế khác tài liệu:
+
+không tự ý phá code.
+
+Hãy báo:
+
+1. điểm khác biệt;
+
+2. nguyên nhân;
+
+3. phương án giữ compatibility;
+
+4. đề xuất migration.
+
+Mục tiêu là tiếp tục phát triển trên nền hiện có, không xây lại từ đầu.

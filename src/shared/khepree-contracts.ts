@@ -1,3 +1,5 @@
+import type { LivestreamPlanSlug } from "./khepree-catalog";
+
 export type FeatureValue =
   | { valueType: "boolean"; booleanValue: boolean }
   | { valueType: "integer"; integerValue: number }
@@ -32,6 +34,7 @@ export interface DesktopAuthExchangeResponse {
   devicePublicId?: string;
   user?: { publicId: string; email: string; name: string };
   lease?: SignedLease;
+  entitlement?: DesktopEntitlementSummary | null;
 }
 
 export interface DesktopRefreshResponse {
@@ -42,19 +45,77 @@ export interface DesktopRefreshResponse {
   lease?: SignedLease;
 }
 
+export interface DesktopEntitlementSummary {
+  entitlementPublicId: string;
+  productSlug: string | null;
+  planSlug: string | null;
+  status: string;
+  expiresAt: string | null;
+  features: Array<{ key: string; value: FeatureValue }>;
+}
+
 export interface DesktopMeResponse {
   sessionPublicId: string;
   user: { publicId: string; email: string; name: string };
   client: { clientId: string; displayName: string; productSlug: string | null; status: string };
-  entitlement: {
-    entitlementPublicId: string;
-    productSlug: string | null;
+  product?: { productId: string; slug: string | null };
+  entitlement: DesktopEntitlementSummary | null;
+  plan?: {
+    planPublicId: string | null;
     planSlug: string | null;
-    status: string;
-    expiresAt: string | null;
-    features: Array<{ key: string; value: FeatureValue }>;
+    name: string;
+    billingType: string;
+    accessTermDays: number | null;
+    accessTermLabel: string;
   } | null;
   device: { devicePublicId: string; status: string } | null;
+  billing?: {
+    hasActiveSubscription: boolean;
+    checkoutAvailable: boolean;
+    pendingPayment: boolean;
+    accessTermLabel?: string | null;
+  };
+  allowedActions?: {
+    checkout: boolean;
+    upgrade: boolean;
+    manageDevices: boolean;
+    refreshEntitlement: boolean;
+  };
+  urls?: {
+    manageDevices: string;
+    accountBilling: string;
+    checkout?: string;
+  };
+}
+
+export interface DesktopPurchasablePlan {
+  planPublicId: string;
+  pricePublicId: string;
+  planSlug: string | null;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  accessTermLabel: string;
+  isCurrent: boolean;
+  isUpgradeAvailable: boolean;
+}
+
+export interface DesktopPlansResponse {
+  currentPlanId: string | null;
+  plans: DesktopPurchasablePlan[];
+}
+
+export interface DesktopCheckoutCreateResponse {
+  checkoutPublicId: string;
+  handoffUrl: string;
+  status: string;
+}
+
+export interface DesktopActivateResponse {
+  lease?: SignedLease;
+  devicePublicId?: string;
+  entitlement?: DesktopEntitlementSummary;
+  features?: Array<{ key: string; value: FeatureValue }>;
 }
 
 export type KhepreeAccessStatus =
@@ -74,6 +135,17 @@ export interface KhepreePublicState {
   status: KhepreeAccessStatus;
   user?: { name: string; email: string };
   planSlug?: string;
+  productSlug?: string;
+  productUrl?: string;
   features: Record<string, boolean | number | string>;
+  offers?: DesktopPurchasablePlan[];
+  catalogHint?: Array<{
+    slug: LivestreamPlanSlug;
+    nameVi: string;
+    amountMinor: number;
+    currency: string;
+    accessTermDays: number;
+  }>;
+  checkoutAvailable?: boolean;
   message?: string;
 }

@@ -1,4 +1,6 @@
 import type { ActionProposal, ProductDNA } from "../../shared/live-types";
+import { applyHallucinationGuard } from "../../shared/sales-brain";
+import { ActionProposalModelSchema } from "../../shared/sales-brain/schema";
 
 export interface GuardResult {
   allowed: boolean;
@@ -15,19 +17,23 @@ export class PolicyGuard {
       reasons.push("Empty speech");
     }
 
-    const speech = (proposal.speech ?? "").toLowerCase();
-    if (product) {
-      for (const forbidden of product.forbiddenClaims) {
-        if (forbidden && speech.includes(forbidden.toLowerCase())) {
-          reasons.push(`Forbidden product claim: ${forbidden}`);
-          next.riskTags.push("regulated_claim");
-        }
+    // Reuse sales-brain hallucination guard (Product DNA grounding).
+    const modelParse = ActionProposalModelSchema.safeParse({
+      kind: proposal.kind,
+      speech: proposal.speech,
+      scene: proposal.scene,
+      productRef: proposal.productRef,
+      confidence: proposal.confidence,
+      reason: proposal.reason || "policy",
+      riskTags: proposal.riskTags,
+      nextState: proposal.nextState
+    });
+    if (modelParse.success) {
+      const grounded = applyHallucinationGuard(modelParse.data, product);
+      if (!grounded.ok) {
+        reasons.push(...grounded.reasons);
+        next.riskTags = [...new Set([...next.riskTags, ...grounded.proposal.riskTags])];
       }
-    }
-
-    if (/\b(chữa khỏi|cure|guaranteed cure|100% hiệu quả)\b/i.test(speech)) {
-      reasons.push("High-risk efficacy claim");
-      next.riskTags.push("medical");
     }
 
     return { allowed: reasons.length === 0, proposal: next, reasons };

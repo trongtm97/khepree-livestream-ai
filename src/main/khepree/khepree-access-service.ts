@@ -1,6 +1,11 @@
 import { app, shell } from "electron";
-import type { KhepreePublicState, SignedLease } from "../../shared/khepree-contracts";
-import { getKhepreeConfig } from "./config";
+import { KHEPREE_LIVESTREAM_CATALOG } from "../../shared/khepree-catalog";
+import type {
+  DesktopPurchasablePlan,
+  KhepreePublicState,
+  SignedLease
+} from "../../shared/khepree-contracts";
+import { getKhepreeConfig, productPublicUrl } from "./config";
 import { createPkceTransaction, type PkceTransaction } from "./pkce";
 import { DeviceIdentityService } from "./device-identity-service";
 import { SessionStore } from "./session-store";
@@ -14,7 +19,19 @@ export class KhepreeAccessService {
   private readonly identity = new DeviceIdentityService();
   private readonly sessions = new SessionStore();
   private readonly api = new KhepreeApiClient(this.config.apiBase, this.identity);
-  private state: KhepreePublicState = { status: "BOOTING", features: {} };
+  private state: KhepreePublicState = {
+    status: "BOOTING",
+    features: {},
+    productSlug: this.config.productSlug,
+    productUrl: productPublicUrl(this.config.website, this.config.productPath),
+    catalogHint: KHEPREE_LIVESTREAM_CATALOG.plans.map((p) => ({
+      slug: p.slug,
+      nameVi: p.nameVi,
+      amountMinor: p.amountMinor,
+      currency: p.currency,
+      accessTermDays: p.accessTermDays
+    }))
+  };
   private tx?: PkceTransaction;
   private accessToken?: string;
   private sessionPublicId?: string;
@@ -36,11 +53,16 @@ export class KhepreeAccessService {
         status: "ACTIVE",
         user: { name: "Development User", email: "dev@local" },
         planSlug: "dev",
+        productSlug: this.config.productSlug,
+        productUrl: productPublicUrl(this.config.website, this.config.productPath),
         features: {
+          [this.config.accessFeatureKey]: true,
           supervised_auto: true,
           full_auto: false,
-          max_accounts: 1
+          "devices.max": 1
         },
+        catalogHint: this.state.catalogHint,
+        checkoutAvailable: false,
         message: "KHEPREE_DEV_MOCK enabled"
       });
       return;
@@ -48,11 +70,23 @@ export class KhepreeAccessService {
 
     const saved = this.sessions.load();
     if (!saved) {
-      this.setState({ status: "AUTH_REQUIRED", features: {} });
+      this.setState({
+        status: "AUTH_REQUIRED",
+        features: {},
+        productSlug: this.config.productSlug,
+        productUrl: productPublicUrl(this.config.website, this.config.productPath),
+        catalogHint: this.state.catalogHint
+      });
       return;
     }
 
-    this.setState({ status: "VALIDATING_SESSION", features: {} });
+    this.setState({
+      status: "VALIDATING_SESSION",
+      features: {},
+      productSlug: this.config.productSlug,
+      productUrl: productPublicUrl(this.config.website, this.config.productPath),
+      catalogHint: this.state.catalogHint
+    });
     try {
       const refreshed = await this.api.refresh(saved.sessionPublicId, saved.refreshToken);
       this.accessToken = refreshed.accessToken;
@@ -65,7 +99,14 @@ export class KhepreeAccessService {
       this.accessToken = undefined;
       this.sessionPublicId = undefined;
       this.lease = undefined;
-      this.setState({ status: "OFFLINE_COLD_START", features: {}, message: String(error) });
+      this.setState({
+        status: "OFFLINE_COLD_START",
+        features: {},
+        productSlug: this.config.productSlug,
+        productUrl: productPublicUrl(this.config.website, this.config.productPath),
+        catalogHint: this.state.catalogHint,
+        message: String(error)
+      });
     }
   }
 
@@ -85,7 +126,7 @@ export class KhepreeAccessService {
     if (!this.tx) throw new Error("NO_AUTH_TRANSACTION");
     if (Date.now() - this.tx.createdAt > 10 * 60_000) throw new Error("AUTH_TRANSACTION_EXPIRED");
     const url = new URL(rawUrl);
-    if (url.protocol !== "khepreelivestreamai:" || url.hostname !== "auth" || url.pathname !== "/callback") {
+    if (url.protocol !== `${KHEPREE_LIVESTREAM_CATALOG.protocol}:` || url.hostname !== "auth" || url.pathname !== "/callback") {
       throw new Error("INVALID_AUTH_CALLBACK");
     }
     if (url.searchParams.get("state") !== this.tx.state) throw new Error("AUTH_STATE_MISMATCH");
@@ -103,6 +144,7 @@ export class KhepreeAccessService {
     this.sessionPublicId = result.sessionPublicId;
     this.sessions.save(result.sessionPublicId, result.refreshToken);
     if (result.lease) this.acceptLease(result.lease);
+    await this.ensureActivated();
     await this.refreshMe();
   }
 
@@ -114,7 +156,13 @@ export class KhepreeAccessService {
     this.accessToken = undefined;
     this.sessionPublicId = undefined;
     this.lease = undefined;
-    this.setState({ status: "AUTH_REQUIRED", features: {} });
+    this.setState({
+      status: "AUTH_REQUIRED",
+      features: {},
+      productSlug: this.config.productSlug,
+      productUrl: productPublicUrl(this.config.website, this.config.productPath),
+      catalogHint: this.state.catalogHint
+    });
   }
 
   async heartbeat(): Promise<void> {
@@ -123,6 +171,7 @@ export class KhepreeAccessService {
     const result = await this.api.heartbeat(this.sessionPublicId, this.accessToken);
     if (result.state !== "ACTIVE") {
       this.setState({
+        ...this.state,
         status: mapMachineState(result.state),
         features: {},
         message: `Khepree heartbeat: ${result.state}`
@@ -130,10 +179,62 @@ export class KhepreeAccessService {
     }
   }
 
+  async openProductPage(): Promise<void> {
+    await shell.openExternal(productPublicUrl(this.config.website, this.config.productPath));
+  }
+
+  async openAccountBilling(): Promise<void> {
+    await shell.openExternal(`${this.config.accountBase}/billing`);
+  }
+
+  async startCheckout(planPublicId: string, pricePublicId: string): Promise<void> {
+    if (!this.accessToken) throw new Error("ACCESS_TOKEN_MISSING");
+    const result = await this.api.createCheckout({
+      accessToken: this.accessToken,
+      clientId: this.config.clientId,
+      planPublicId,
+      pricePublicId,
+      locale: "vi"
+    });
+    await shell.openExternal(result.handoffUrl);
+  }
+
+  async refreshOffers(): Promise<DesktopPurchasablePlan[]> {
+    if (!this.accessToken) return [];
+    try {
+      const res = await this.api.listPlans(this.accessToken, this.config.clientId, "vi");
+      this.setState({ ...this.state, offers: res.plans });
+      return res.plans;
+    } catch (error) {
+      console.warn("Khepree plans fetch failed", error);
+      return this.state.offers ?? [];
+    }
+  }
+
   assertProductAccess(feature?: string): void {
     if (this.state.status !== "ACTIVE") throw new Error("KHEPREE_ACCESS_REQUIRED");
+    const access = this.state.features[this.config.accessFeatureKey];
+    if (access === false) throw new Error(`KHEPREE_FEATURE_NOT_ALLOWED:${this.config.accessFeatureKey}`);
     if (feature && this.state.features[feature] === false) {
       throw new Error(`KHEPREE_FEATURE_NOT_ALLOWED:${feature}`);
+    }
+  }
+
+  private async ensureActivated(): Promise<void> {
+    if (!this.accessToken) return;
+    try {
+      const activated = await this.api.activate({
+        clientId: this.config.clientId,
+        accessToken: this.accessToken,
+        appVersion: app.getVersion()
+      });
+      if (activated.lease) this.acceptLease(activated.lease);
+    } catch (error) {
+      const code = String(error);
+      // ENTITLEMENT_MISSING is expected until the user buys/starts a plan.
+      if (!code.includes("ENTITLEMENT_MISSING")) {
+        console.warn("Khepree activate:", error);
+      }
     }
   }
 
@@ -142,7 +243,8 @@ export class KhepreeAccessService {
       publicKeyPem: this.config.signingPublicKey,
       expectedKeyId: this.config.signingKeyId,
       expectedProductSlug: this.config.productSlug,
-      expectedDeviceId: lease.payload.deviceId
+      expectedDeviceId: lease.payload.deviceId,
+      requireSignature: Boolean(this.config.signingPublicKey) || app.isPackaged
     });
     this.lease = lease;
   }
@@ -150,28 +252,60 @@ export class KhepreeAccessService {
   private async refreshMe(): Promise<void> {
     if (!this.accessToken) throw new Error("ACCESS_TOKEN_MISSING");
     const me = await this.api.me(this.accessToken);
+    if (!me.device) {
+      await this.ensureActivated();
+    }
+
     const features: Record<string, boolean | number | string> = {};
     for (const item of me.entitlement?.features ?? []) {
       if (item.value.valueType === "boolean") features[item.key] = item.value.booleanValue;
       if (item.value.valueType === "integer") features[item.key] = item.value.integerValue;
       if (item.value.valueType === "string") features[item.key] = item.value.stringValue;
     }
+    // ACTIVE entitlement implies product access even if feature list is empty briefly.
+    if (me.entitlement?.status === "active" && features[this.config.accessFeatureKey] === undefined) {
+      features[this.config.accessFeatureKey] = true;
+    }
+
     const ent = me.entitlement;
     const status = !ent ? "ENTITLEMENT_MISSING"
       : ent.status === "active" ? "ACTIVE"
       : ent.status === "expired" ? "ENTITLEMENT_EXPIRED"
       : ent.status === "suspended" ? "ENTITLEMENT_SUSPENDED"
       : "ERROR";
+
+    let offers = this.state.offers;
+    if (status !== "ACTIVE" || me.allowedActions?.checkout || me.allowedActions?.upgrade) {
+      try {
+        offers = (await this.api.listPlans(this.accessToken, this.config.clientId, "vi")).plans;
+      } catch {
+        /* keep previous offers */
+      }
+    }
+
     this.setState({
       status,
       user: { name: me.user.name, email: me.user.email },
-      planSlug: ent?.planSlug ?? undefined,
-      features
+      planSlug: ent?.planSlug ?? me.plan?.planSlug ?? undefined,
+      productSlug: me.product?.slug ?? me.client.productSlug ?? this.config.productSlug,
+      productUrl: productPublicUrl(this.config.website, this.config.productPath),
+      features,
+      offers,
+      catalogHint: this.state.catalogHint,
+      checkoutAvailable: me.billing?.checkoutAvailable ?? me.allowedActions?.checkout ?? false,
+      message: status === "ENTITLEMENT_MISSING"
+        ? "Chưa có bản quyền — chọn gói Tháng/Năm trên Khepree để mở khóa."
+        : undefined
     });
   }
 
   private setState(state: KhepreePublicState): void {
-    this.state = state;
+    this.state = {
+      ...state,
+      productSlug: state.productSlug ?? this.config.productSlug,
+      productUrl: state.productUrl ?? productPublicUrl(this.config.website, this.config.productPath),
+      catalogHint: state.catalogHint ?? this.state.catalogHint
+    };
     for (const listener of this.listeners) listener(this.publicState);
   }
 }

@@ -1,12 +1,15 @@
 import { app } from "electron";
+import { KHEPREE_LIVESTREAM_CATALOG } from "../../shared/khepree-catalog";
 
 const PRODUCTION = {
   apiBase: "https://api.khepree.com/api/v1",
   accountBase: "https://account.khepree.com",
   website: "https://khepree.com",
-  clientId: "khepree-livestream-ai-desktop",
-  productSlug: "khepree-livestream-ai",
-  redirectUri: "khepreelivestreamai://auth/callback"
+  clientId: KHEPREE_LIVESTREAM_CATALOG.clientId,
+  productSlug: KHEPREE_LIVESTREAM_CATALOG.productSlug,
+  redirectUri: KHEPREE_LIVESTREAM_CATALOG.redirectUri,
+  accessFeatureKey: KHEPREE_LIVESTREAM_CATALOG.accessFeatureKey,
+  productPath: KHEPREE_LIVESTREAM_CATALOG.productPath
 } as const;
 
 export function getKhepreeConfig() {
@@ -22,4 +25,8 @@ export function getKhepreeConfig() {
     signingKeyId: process.env.KHEPREE_LICENSE_SIGNING_KEY_ID ?? "k1",
     devMock: !packaged && process.env.KHEPREE_DEV_MOCK === "1"
   };
+}
+
+export function productPublicUrl(website: string, productPath: string): string {
+  return `${website.replace(/\/$/, "")}${productPath}`;
 }

@@ -6,7 +6,12 @@
   "selectors": {
     "commentRows": [],
     "orderRows": [],
-    "violationRows": []
+    "violationRows": [],
+    "productActivityRows": []
   },
-  "notes": "Populate only after real-account smoke. Never guess selectors in production."
+  "loginHints": {
+    "signedInUrlIncludes": ["/live/manager", "/homepage", "/seller"],
+    "loginUrlIncludes": ["login", "passport", "account/login", "signin"]
+  },
+  "notes": "Populate selectors only after real-account smoke. Never guess selectors in production. Never store passwords. Order rows are activity signals — do not invent payment-confirmed."
 }

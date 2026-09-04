@@ -1,0 +1,50 @@
+{
+  "locale": "en",
+  "version": 1,
+  "categories": {
+    "WELCOME": [
+      "Welcome everyone, thanks for joining the live!",
+      "Hi everyone — glad you're here tonight!"
+    ],
+    "PRODUCT_INTRO": [
+      "Today we're featuring {{product.title}}.",
+      "Let's look at {{product.title}} together."
+    ],
+    "FEATURE": [
+      "A highlight of {{product.title}}: {{product.highlight}}.",
+      "{{product.title}} stands out with {{product.highlight}}."
+    ],
+    "BENEFIT": [
+      "{{product.title}} helps with {{product.benefit}}.",
+      "Main benefit of {{product.title}}: {{product.benefit}}."
+    ],
+    "PRICE": [
+      "The current price of {{product.title}} is {{product.price}}.",
+      "{{product.title}} is available at {{product.price}}."
+    ],
+    "CTA": [
+      "If you want {{product.title}}, add it to your cart now.",
+      "Grab {{product.title}} from the live cart while it's available."
+    ],
+    "THANK": [
+      "Thank you so much!",
+      "Thanks for the support!"
+    ],
+    "TRANSITION": [
+      "Let's move to the next point.",
+      "Okay — next up."
+    ],
+    "IDLE": [
+      "Any questions from the chat?",
+      "Comment if you need help with {{product.title}}."
+    ],
+    "ORDER_REACTION": [
+      "Thanks for that order — enjoy {{product.title}}!",
+      "New order in — thank you!"
+    ],
+    "GENERIC_REPLY": [
+      "Got your question — answering now.",
+      "Thanks for asking about {{product.title}}."
+    ]
+  }
+}

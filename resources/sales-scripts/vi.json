@@ -1,0 +1,50 @@
+{
+  "locale": "vi",
+  "version": 1,
+  "categories": {
+    "WELCOME": [
+      "Xin chào mọi người, cảm ơn đã vào live!",
+      "Chào mừng cả nhà đến livestream hôm nay!"
+    ],
+    "PRODUCT_INTRO": [
+      "Hôm nay mình giới thiệu {{product.title}}.",
+      "Sản phẩm hôm nay là {{product.title}} — cùng xem nhanh nhé."
+    ],
+    "FEATURE": [
+      "{{product.title}} có điểm nổi bật: {{product.highlight}}.",
+      "Về {{product.title}}, điểm hay là {{product.highlight}}."
+    ],
+    "BENEFIT": [
+      "Dùng {{product.title}} giúp {{product.benefit}}.",
+      "Lợi ích chính của {{product.title}}: {{product.benefit}}."
+    ],
+    "PRICE": [
+      "Giá hiện tại của {{product.title}} là {{product.price}}.",
+      "{{product.title}} đang bán với giá {{product.price}}."
+    ],
+    "CTA": [
+      "Ai cần {{product.title}} thì chốt trong giỏ hàng giúp mình nhé.",
+      "Muốn lấy {{product.title}} thì đặt hàng ngay trong live này."
+    ],
+    "THANK": [
+      "Cảm ơn bạn rất nhiều!",
+      "Thank you — cảm ơn đã ủng hộ live."
+    ],
+    "TRANSITION": [
+      "Mình chuyển sang phần tiếp theo nhé.",
+      "Ok, mình sang ý tiếp theo."
+    ],
+    "IDLE": [
+      "Mọi người còn câu hỏi gì không ạ?",
+      "Ai cần tư vấn {{product.title}} thì comment giúp mình."
+    ],
+    "ORDER_REACTION": [
+      "Cảm ơn đơn hàng vừa rồi — chúc bạn dùng {{product.title}} vui vẻ!",
+      "Có đơn mới rồi, cảm ơn bạn rất nhiều!"
+    ],
+    "GENERIC_REPLY": [
+      "Mình đã nhận câu hỏi, để mình trả lời ngay.",
+      "Cảm ơn bạn đã hỏi về {{product.title}}."
+    ]
+  }
+}

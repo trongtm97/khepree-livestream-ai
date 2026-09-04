@@ -28,6 +28,8 @@ export type LiveEventType =
   | "GIFT"
   | "VIEWER_COUNT"
   | "ORDER_ACTIVITY"
+  | "VIOLATION"
+  | "PRODUCT_ACTIVITY"
   | "CONNECT"
   | "DISCONNECT"
   | "SYSTEM";
@@ -44,6 +46,17 @@ export interface LiveEvent {
   text?: string;
   amount?: number;
   productRef?: string;
+  /** Dedup key for repeated DOM/activity scans. */
+  fingerprint?: string;
+  /** 0–1; order DOM defaults low unless payment is proven in UI text. */
+  confidence?: number;
+  /** Provenance for activity signals (e.g. live-manager-dom). */
+  activitySource?: string;
+  /**
+   * Only true when UI text clearly proves payment.
+   * Order rows are activity signals — never invent payment-confirmed.
+   */
+  paymentConfirmed?: boolean;
   raw?: unknown;
 }
 
@@ -88,18 +101,38 @@ export interface ApprovalItem {
   operatorNote?: string;
 }
 
+export interface ProductVariant {
+  name: string;
+  values: string[];
+}
+
+export interface ProductFaq {
+  question: string;
+  answer: string;
+}
+
 export interface ProductDNA {
   id: string;
   title: string;
   sourceUrl?: string;
+  description?: string;
   priceText?: string;
   currency?: string;
-  variants: Array<{ name: string; values: string[] }>;
+  /** Điểm nổi bật — AI chỉ được nêu khi có trong DNA. */
   facts: string[];
   benefits: string[];
+  materials?: string;
+  sizes: string[];
+  colors: string[];
+  variants: ProductVariant[];
+  stockText?: string;
+  shippingText?: string;
+  warrantyText?: string;
+  faq: ProductFaq[];
   allowedClaims: string[];
   forbiddenClaims: string[];
-  faq: Array<{ question: string; answer: string }>;
+  /** Ghi chú nội bộ cho AI (không đọc nguyên văn cho khách nếu không phù hợp). */
+  aiNotes?: string;
   updatedAt: string;
 }
 

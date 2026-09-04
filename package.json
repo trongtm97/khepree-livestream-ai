@@ -19,6 +19,7 @@
     "make": "electron-forge make",
     "typecheck": "tsc --noEmit",
     "test:foundation": "node scripts/foundation-check.mjs",
+    "test:sales-brain": "npx --yes tsx src/shared/sales-brain/self-check.ts",
     "doctor": "node scripts/dev-doctor.mjs",
     "worker:gemini": "python workers/gemini_worker/app.py",
     "worker:tiktok": "python workers/tiktok_worker/app.py"
