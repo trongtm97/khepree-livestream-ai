@@ -17,6 +17,20 @@ export class HttpWorkerProcess {
 
   constructor(private readonly spec: WorkerSpec) {}
 
+  get name(): string {
+    return this.spec.name;
+  }
+
+  /** Localhost port after start — main-process diagnostics only. */
+  get listenPort(): number | undefined {
+    return this.port;
+  }
+
+  /** Bearer token after start — main-process diagnostics/tests only; never to renderer. */
+  get workerToken(): string | undefined {
+    return this.token;
+  }
+
   get baseUrl(): string {
     if (!this.port) throw new Error(`${this.spec.name} not started`);
     return `http://127.0.0.1:${this.port}`;

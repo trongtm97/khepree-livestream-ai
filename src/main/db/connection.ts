@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const SCHEMA_VERSION_KEY = "schema.version";
-/** Current schema version after multi-live account tables. */
-export const CURRENT_SCHEMA_VERSION = 2;
+/** Current schema version — v3 adds live_sessions.status for crash recovery. */
+export const CURRENT_SCHEMA_VERSION = 3;
 
 export function openDatabase(userDataDir: string): Database.Database {
   const dataDir = path.join(userDataDir, "data");
@@ -155,6 +155,30 @@ function migrateV2MultiLive(db: Database.Database): void {
 }
 
 /**
+ * Live session status column for crash recovery queries.
+ * Additive — never drop historical session rows.
+ */
+function migrateV3LiveSessionStatus(db: Database.Database): void {
+  if (!tableHasColumn(db, "live_sessions", "status")) {
+    db.exec(`ALTER TABLE live_sessions ADD COLUMN status TEXT`);
+  }
+  // Backfill: open rows → RUNNING; closed rows → ENDED (preserve explicit final_state markers).
+  db.exec(`
+    UPDATE live_sessions
+    SET status = CASE
+      WHEN ended_at IS NULL THEN 'RUNNING'
+      WHEN final_state IN ('CRASH_RECOVERED', 'ABORTED') THEN final_state
+      ELSE 'ENDED'
+    END
+    WHERE status IS NULL OR status = '';
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_live_sessions_status
+      ON live_sessions(status);
+  `);
+}
+
+/**
  * Versioned, additive migrations.
  * Legacy DBs without schema.version start at 0; v1 CREATE IF NOT EXISTS preserves rows.
  */
@@ -172,5 +196,11 @@ export function migrate(db: Database.Database): void {
   if (version < 2) {
     migrateV2MultiLive(db);
     setSchemaVersion(db, 2);
+    version = 2;
+  }
+
+  if (version < 3) {
+    migrateV3LiveSessionStatus(db);
+    setSchemaVersion(db, 3);
   }
 }

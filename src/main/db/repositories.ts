@@ -14,6 +14,7 @@ import type {
   ApprovalItem,
   AutomationMode,
   LiveEvent,
+  LiveSession,
   ProductDNA,
   TikTokAccount
 } from "../../shared/live-types";
@@ -223,18 +224,27 @@ export class LiveSessionRepository {
 
   /** Align DB row with in-memory session id created at live start. */
   startWithId(sessionId: string, automationMode: string, accountId?: string | null): void {
-    this.db.prepare(`
-      INSERT OR IGNORE INTO live_sessions(id, account_id, started_at, ended_at, automation_mode, final_state)
-      VALUES(?, ?, ?, NULL, ?, NULL)
-    `).run(sessionId, accountId ?? null, new Date().toISOString(), automationMode);
+    this.db
+      .prepare(
+        `
+      INSERT OR IGNORE INTO live_sessions(id, account_id, started_at, ended_at, automation_mode, final_state, status)
+      VALUES(?, ?, ?, NULL, ?, NULL, 'RUNNING')
+    `
+      )
+      .run(sessionId, accountId ?? null, new Date().toISOString(), automationMode);
   }
 
   end(sessionId: string, finalState: string): void {
-    this.db.prepare(`
+    const status = statusFromFinalState(finalState);
+    this.db
+      .prepare(
+        `
       UPDATE live_sessions
-      SET ended_at = ?, final_state = ?
+      SET ended_at = ?, final_state = ?, status = ?
       WHERE id = ? AND ended_at IS NULL
-    `).run(new Date().toISOString(), finalState, sessionId);
+    `
+      )
+      .run(new Date().toISOString(), finalState, status, sessionId);
   }
 
   hasActiveSession(accountId: string): boolean {
@@ -245,6 +255,79 @@ export class LiveSessionRepository {
       .get(accountId) as { ok: number } | undefined;
     return Boolean(row?.ok);
   }
+
+  /** Open sessions left by a crashed process (ended_at IS NULL). */
+  listOpenSessions(): LiveSession[] {
+    const rows = this.db
+      .prepare(
+        `
+      SELECT id, account_id, started_at, ended_at, automation_mode, final_state, status
+      FROM live_sessions
+      WHERE ended_at IS NULL
+      ORDER BY started_at ASC
+    `
+      )
+      .all() as SessionRow[];
+    return rows.map(mapSessionRow);
+  }
+
+  get(sessionId: string): LiveSession | undefined {
+    const row = this.db
+      .prepare(
+        `
+      SELECT id, account_id, started_at, ended_at, automation_mode, final_state, status
+      FROM live_sessions WHERE id = ?
+    `
+      )
+      .get(sessionId) as SessionRow | undefined;
+    return row ? mapSessionRow(row) : undefined;
+  }
+
+  /**
+   * Close every open session — used only by crash recovery on process startup.
+   * Does not delete rows (history preserved).
+   */
+  abortAllOpen(endedAt: string, finalState: string): number {
+    const status = statusFromFinalState(finalState);
+    const result = this.db
+      .prepare(
+        `
+      UPDATE live_sessions
+      SET ended_at = ?, final_state = ?, status = ?
+      WHERE ended_at IS NULL
+    `
+      )
+      .run(endedAt, finalState, status);
+    return result.changes;
+  }
+}
+
+type SessionRow = {
+  id: string;
+  account_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  automation_mode: string;
+  final_state: string | null;
+  status: string | null;
+};
+
+function mapSessionRow(row: SessionRow): LiveSession {
+  return {
+    id: row.id,
+    accountId: row.account_id ?? "",
+    startedAt: row.started_at,
+    endedAt: row.ended_at ?? undefined,
+    automationMode: row.automation_mode as AutomationMode,
+    finalState: row.final_state ?? undefined,
+    status: (row.status as LiveSession["status"]) ?? undefined
+  };
+}
+
+function statusFromFinalState(finalState: string): string {
+  if (finalState === "CRASH_RECOVERED") return "CRASH_RECOVERED";
+  if (finalState === "ABORTED") return "ABORTED";
+  return "ENDED";
 }
 
 type AccountRow = {

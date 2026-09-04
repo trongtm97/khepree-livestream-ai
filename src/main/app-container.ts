@@ -16,16 +16,24 @@ import {
   LlmProviderManager
 } from "./connectors/llm/llm-provider-manager";
 import {
-  assertTikTokConnectorContract,
-  TikTokConnectorManager
+  assertTikTokConnectorContract
 } from "./connectors/tiktok/tiktok-connector-manager";
+import { TikTokConnectorRegistry } from "./connectors/tiktok/tiktok-connector-registry";
 import {
-  assertLiveManagerContract,
-  LiveManagerManager
+  assertLiveManagerContract
 } from "./connectors/tiktok/live-manager-manager";
+import { LiveManagerRegistry } from "./connectors/tiktok/live-manager-registry";
 import { MockMediaProvider } from "./connectors/media/mock-media-provider";
 import { CommentFeedService } from "./live/comment-feed-service";
 import { MultiLiveRuntimeManager } from "./live/multi-live-runtime-manager";
+import { AiRequestScheduler } from "./live/ai-request-scheduler";
+import { LiveCapacityService } from "./live/live-capacity-service";
+import { createOsResourceGovernor } from "./live/resource-governor";
+import {
+  LiveSessionRecoveryService,
+  type SessionRecoveryReport
+} from "./live/live-session-recovery";
+import { LIVE_SESSION_CRASH_RECOVERED } from "../shared/live-types";
 import { KhepreeAccessService } from "./khepree/khepree-access-service";
 import { KhepreeHeartbeatService } from "./khepree/heartbeat-service";
 import { assertProductDnaHelpers } from "../shared/product-dna";
@@ -56,12 +64,29 @@ export class AppContainer {
   readonly khepree = new KhepreeAccessService();
   readonly heartbeat = new KhepreeHeartbeatService(this.khepree);
   readonly llm: LlmProviderManager;
-  readonly tiktok: TikTokConnectorManager;
-  readonly liveManager: LiveManagerManager;
+  /**
+   * Fair AI queue between LiveRuntime(s) and LlmProviderManager.
+   * Does not replace Gemini circuit breaker / session / models.
+   */
+  readonly aiScheduler: AiRequestScheduler;
+  /** Per-account TikTok connectors (one worker process each). */
+  readonly tiktok: TikTokConnectorRegistry;
+  /** Per-account LIVE Manager browsers (one profile each). */
+  readonly liveManager: LiveManagerRegistry;
   readonly comments: CommentFeedService;
   /** Shared mock until per-runtime media sessions are fully specialized. */
   readonly media = new MockMediaProvider();
+  /** License limits ≠ hardware capacity — never mixed. */
+  readonly capacity: LiveCapacityService;
   readonly multiLive: MultiLiveRuntimeManager;
+  /** Last startup crash-recovery report (empty when nothing stale). */
+  private sessionRecovery: SessionRecoveryReport = {
+    recoveredCount: 0,
+    sessionIds: [],
+    accountIds: [],
+    recoveredAt: new Date(0).toISOString(),
+    reason: LIVE_SESSION_CRASH_RECOVERED
+  };
 
   constructor() {
     this.db = openDatabase(app.getPath("userData"));
@@ -90,7 +115,15 @@ export class AppContainer {
       getLocale: () => this.settings.getLocale()
     });
 
+    this.aiScheduler = new AiRequestScheduler({ provider: this.llm });
+
     this.comments = new CommentFeedService({ eventBus: this.eventBus });
+
+    this.capacity = new LiveCapacityService({
+      getFeatures: () => this.khepree.publicState.features,
+      isLicenseActive: () => this.khepree.publicState.status === "ACTIVE",
+      governor: createOsResourceGovernor()
+    });
 
     this.multiLive = new MultiLiveRuntimeManager({
       accounts: this.tiktokAccounts,
@@ -102,11 +135,30 @@ export class AppContainer {
         sessions: this.sessions,
         accountLiveSettings: this.accountLiveSettings
       },
-      llm: this.llm,
+      llm: this.aiScheduler,
       createMedia: () => new MockMediaProvider(),
       assertProductAccess: (feature) => this.khepree.assertProductAccess(feature),
+      capacity: this.capacity,
+      getResourceExtras: () => ({
+        activeTikTokWorkers: this.tiktok
+          .getAllStates()
+          .filter((s) => s.connected || s.phase === "CONNECTING" || s.phase === "RECONNECTING")
+          .length,
+        activeBrowserContexts: this.liveManager
+          .getAllStates()
+          .filter((s) => s.phase !== "CLOSED")
+          .length,
+        aiQueueLength: this.aiScheduler.getMetrics().queueLength
+      }),
       onEvent: (event) => this.eventBus.publish(event),
-      onApprovalChanged: (item) => this.comments.applyApproval(item)
+      onApprovalChanged: (item) => this.comments.applyApproval(item),
+      onLiveStarted: (accountId, sessionId) => {
+        this.aiScheduler.bindSession(accountId, sessionId);
+      },
+      onLiveStopped: (accountId) => {
+        this.aiScheduler.unbindSession(accountId);
+        this.aiScheduler.cancelAccount(accountId);
+      }
     });
 
     // Restore focused account (persisted); unpackaged may fall back to first account for UI.
@@ -122,32 +174,24 @@ export class AppContainer {
     }
 
     const connectorSink = new LiveEventBus();
-    this.tiktok = new TikTokConnectorManager({
+    this.tiktok = new TikTokConnectorRegistry({
       appRoot: resolveAppRoot(),
-      eventBus: connectorSink,
-      onEvent: (event) => {
-        const accountId = this.requireFocusedOrThrow();
-        this.multiLive.ensureRuntime(accountId).publishEvent({
-          ...event,
-          accountId
-        });
-      },
-      getSavedUniqueId: () => this.settings.getTikTokUniqueId(),
-      setSavedUniqueId: (id) => this.settings.setTikTokUniqueId(id)
+      accounts: this.tiktokAccounts,
+      multiLive: this.multiLive,
+      eventBus: connectorSink
     });
-    this.liveManager = new LiveManagerManager({
-      eventBus: connectorSink,
-      onEvent: (event) => {
-        const accountId = this.requireFocusedOrThrow();
-        this.multiLive.ensureRuntime(accountId).publishEvent({
-          ...event,
-          accountId
-        });
-      }
+
+    this.liveManager = new LiveManagerRegistry({
+      accounts: this.tiktokAccounts,
+      multiLive: this.multiLive,
+      eventBus: connectorSink
     });
   }
 
   async initialize(): Promise<void> {
+    // Process just started — no in-memory runtime owns prior DB sessions.
+    this.sessionRecovery = new LiveSessionRecoveryService(this.sessions).recoverOnStartup();
+
     if (!app.isPackaged) {
       assertProductDnaHelpers();
       assertProductImportHelpers();
@@ -169,26 +213,26 @@ export class AppContainer {
     this.heartbeat.start();
   }
 
+  getSessionRecoveryReport(): SessionRecoveryReport {
+    return this.sessionRecovery;
+  }
+
   dispose(): void {
     this.multiLive.dispose();
+    this.aiScheduler.cancelAll();
     this.comments.stop();
     this.heartbeat.stop();
     void this.llm.dispose();
     void this.tiktok.dispose();
-    void this.liveManager.dispose();
+    void this.liveManager.disposeAll();
     this.db.close();
-  }
-
-  private requireFocusedOrThrow(): string {
-    const id = this.multiLive.focusedId;
-    if (!id) throw new Error("ACCOUNT_ID_REQUIRED");
-    return id;
   }
 }
 
 /**
  * Migrate legacy tiktok.uniqueId / products.currentId into tiktok_accounts once.
  * Does not set focused account in production and does not start live.
+ * After migration, runtime connect uses TikTokAccountRepository.username only.
  */
 export function seedLegacyTikTokAccountIfNeeded(
   accounts: TikTokAccountRepository,

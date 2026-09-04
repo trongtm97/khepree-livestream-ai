@@ -19,6 +19,7 @@ import {
 import { MockLlmProvider } from "../connectors/llm/mock-llm-provider";
 import { MockMediaProvider } from "../connectors/media/mock-media-provider";
 import { MultiLiveRuntimeManager } from "../live/multi-live-runtime-manager";
+import { createTestLiveCapacity } from "../live/live-capacity-service";
 import { requireValidAccountId } from "./account-id";
 import type { LiveEvent } from "../../shared/live-types";
 
@@ -106,7 +107,7 @@ export async function assertAccountAwareIpc(): Promise<void> {
       llm: new MockLlmProvider(),
       createMedia: () => new MockMediaProvider(),
       assertProductAccess: () => undefined,
-      maxConcurrentLives: 5
+      capacity: createTestLiveCapacity({ maxConcurrentLives: 5 })
     });
 
     manager.setCurrentProduct(a.id, "prod_x");

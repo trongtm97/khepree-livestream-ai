@@ -1,5 +1,6 @@
 import type { LiveEventBus } from "../core/event-bus";
 import type { ApprovalItem, LiveEvent } from "../../shared/live-types";
+import { UNASSIGNED_ACCOUNT_ID } from "../../shared/live-types";
 import { analyzeComment } from "../../shared/comment-priority";
 import {
   priorityFromAnalysis,
@@ -9,8 +10,12 @@ import {
   type CommentFeedSnapshot
 } from "../../shared/comment-feed";
 
-const MAX_BUFFER = 400;
-const MAX_SNAPSHOT = 200;
+/** Soft cap per account so one busy shop cannot evict another's rows. */
+export const MAX_PER_ACCOUNT = 300;
+/** Global operator dashboard render/source cap. */
+export const MAX_GLOBAL_SNAPSHOT = 200;
+/** Per-account snapshot cap. */
+export const MAX_ACCOUNT_SNAPSHOT = 200;
 
 export type CommentFeedServiceOptions = {
   eventBus: LiveEventBus;
@@ -18,7 +23,7 @@ export type CommentFeedServiceOptions = {
 
 /**
  * Consumes Event Bus COMMENT events, applies CommentPriority in main,
- * and exposes a capped feed for the operator UI. Never calls Gemini.
+ * and exposes capped global + per-account feeds. Never calls Gemini.
  */
 export class CommentFeedService {
   private readonly items = new Map<string, CommentFeedItem>();
@@ -38,19 +43,51 @@ export class CommentFeedService {
     this.unsubscribe = undefined;
   }
 
+  /** Global fan-in snapshot for "needs attention" dashboard. */
   getSnapshot(): CommentFeedSnapshot {
     const sorted = sortCommentFeed([...this.items.values()]);
-    const capped = sorted.length > MAX_SNAPSHOT;
+    const capped = sorted.length > MAX_GLOBAL_SNAPSHOT;
     return {
-      items: sorted.slice(0, MAX_SNAPSHOT),
+      items: sorted.slice(0, MAX_GLOBAL_SNAPSHOT),
       total: this.items.size,
       capped
     };
   }
 
-  setOperatorPriority(eventId: string, value = true): CommentFeedItem | undefined {
-    const item = this.items.get(eventId);
-    if (!item) return undefined;
+  getSnapshotForAccount(accountId: string): CommentFeedSnapshot {
+    const id = accountId.trim();
+    if (!id) throw new Error("ACCOUNT_ID_REQUIRED");
+    const rows = [...this.items.values()].filter((r) => r.accountId === id);
+    const sorted = sortCommentFeed(rows);
+    const capped = sorted.length > MAX_ACCOUNT_SNAPSHOT;
+    return {
+      accountId: id,
+      items: sorted.slice(0, MAX_ACCOUNT_SNAPSHOT),
+      total: rows.length,
+      capped
+    };
+  }
+
+  /** High-priority / operator-pinned rows across accounts. */
+  getHighPriorityGlobalSnapshot(): CommentFeedSnapshot {
+    const rows = [...this.items.values()].filter(
+      (r) => r.operatorPriority || r.isImportant || r.isPurchaseIntent
+    );
+    const sorted = sortCommentFeed(rows);
+    const capped = sorted.length > MAX_GLOBAL_SNAPSHOT;
+    return {
+      items: sorted.slice(0, MAX_GLOBAL_SNAPSHOT),
+      total: rows.length,
+      capped
+    };
+  }
+
+  setOperatorPriority(
+    accountId: string,
+    eventId: string,
+    value = true
+  ): CommentFeedItem {
+    const item = this.requireOwned(accountId, eventId);
     item.operatorPriority = value;
     if (value) {
       item.skippedAt = undefined;
@@ -60,9 +97,8 @@ export class CommentFeedService {
     return item;
   }
 
-  markReplied(eventId: string): CommentFeedItem | undefined {
-    const item = this.items.get(eventId);
-    if (!item) return undefined;
+  markReplied(accountId: string, eventId: string): CommentFeedItem {
+    const item = this.requireOwned(accountId, eventId);
     item.repliedAt = new Date().toISOString();
     item.skippedAt = undefined;
     item.aiStatus = "EXECUTED";
@@ -70,9 +106,8 @@ export class CommentFeedService {
     return item;
   }
 
-  markSkipped(eventId: string): CommentFeedItem | undefined {
-    const item = this.items.get(eventId);
-    if (!item) return undefined;
+  markSkipped(accountId: string, eventId: string): CommentFeedItem {
+    const item = this.requireOwned(accountId, eventId);
     item.skippedAt = new Date().toISOString();
     item.operatorPriority = false;
     item.aiStatus = "SKIPPED";
@@ -86,6 +121,18 @@ export class CommentFeedService {
     if (!eventId) return;
     const row = this.items.get(eventId);
     if (!row) return;
+
+    if (!item.accountId || row.accountId !== item.accountId) {
+      console.error(
+        "[CommentFeed] applyApproval account mismatch",
+        eventId,
+        "feed=",
+        row.accountId,
+        "approval=",
+        item.accountId
+      );
+      return;
+    }
 
     if (item.proposal.kind === "IGNORE" && item.status === "APPROVED") {
       row.aiStatus = "SKIPPED";
@@ -104,14 +151,48 @@ export class CommentFeedService {
     this.items.set(eventId, row);
   }
 
+  /** Test/dev: count rows for one account without snapshot cap. */
+  countForAccount(accountId: string): number {
+    const id = accountId.trim();
+    let n = 0;
+    for (const row of this.items.values()) {
+      if (row.accountId === id) n += 1;
+    }
+    return n;
+  }
+
+  /** Test seam — ingest without Event Bus. */
+  ingestForTest(event: LiveEvent): void {
+    this.ingest(event);
+  }
+
+  private requireOwned(accountId: string, eventId: string): CommentFeedItem {
+    const aid = accountId.trim();
+    const eid = eventId.trim();
+    if (!aid) throw new Error("ACCOUNT_ID_REQUIRED");
+    if (!eid) throw new Error("COMMENT_ID_REQUIRED");
+    const item = this.items.get(eid);
+    if (!item) throw new Error("COMMENT_NOT_FOUND");
+    if (item.accountId !== aid) throw new Error("COMMENT_ACCOUNT_MISMATCH");
+    return item;
+  }
+
   private ingest(event: LiveEvent): void {
     if (event.type !== "COMMENT") return;
     if (this.items.has(event.id)) return;
+
+    const accountId = event.accountId?.trim();
+    if (!accountId || accountId === UNASSIGNED_ACCOUNT_ID) {
+      console.error("[CommentFeed] COMMENT_ACCOUNT_ID_MISSING", event.id);
+      return;
+    }
 
     const analysis = analyzeComment(event);
     const row: CommentFeedItem = {
       id: event.id,
       eventId: event.id,
+      accountId,
+      sessionId: event.sessionId,
       sequence: event.sequence,
       username: event.username,
       displayName: event.displayName,
@@ -124,13 +205,14 @@ export class CommentFeedService {
     };
 
     this.items.set(event.id, row);
-    this.trim();
+    this.trimAccount(accountId);
   }
 
-  private trim(): void {
-    if (this.items.size <= MAX_BUFFER) return;
-    const ordered = [...this.items.values()].sort((a, b) => a.sequence - b.sequence);
-    const drop = ordered.length - MAX_BUFFER;
+  private trimAccount(accountId: string): void {
+    const rows = [...this.items.values()].filter((r) => r.accountId === accountId);
+    if (rows.length <= MAX_PER_ACCOUNT) return;
+    const ordered = rows.sort((a, b) => a.sequence - b.sequence);
+    const drop = ordered.length - MAX_PER_ACCOUNT;
     for (let i = 0; i < drop; i += 1) {
       const id = ordered[i]?.eventId;
       if (id) this.items.delete(id);

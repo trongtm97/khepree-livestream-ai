@@ -21,6 +21,10 @@ export type CommentFeedFilter =
 export interface CommentFeedItem {
   id: string;
   eventId: string;
+  /** Provenance: which TikTok account produced this comment. Required. */
+  accountId: string;
+  /** Provenance: live session when the comment arrived during an active live. */
+  sessionId?: string;
   sequence: number;
   username?: string;
   displayName?: string;
@@ -44,6 +48,8 @@ export interface CommentFeedSnapshot {
   items: CommentFeedItem[];
   total: number;
   capped: boolean;
+  /** Present on account-scoped snapshots. */
+  accountId?: string;
 }
 
 export function matchesCommentFilter(

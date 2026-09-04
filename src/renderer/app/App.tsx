@@ -30,6 +30,7 @@ export function App() {
   const [helpDrawer, setHelpDrawer] = useState<HelpDrawerState>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>(null);
+  const recoveryNotified = React.useRef(false);
 
   const locale: AppLocale = snapshot?.locale ?? "vi";
   const t = useMemo(() => createTranslator(locale), [locale]);
@@ -69,6 +70,17 @@ export function App() {
     },
     []
   );
+
+  useEffect(() => {
+    const recovery = snapshot?.sessionRecovery;
+    if (!recovery || recovery.recoveredCount <= 0 || recoveryNotified.current) return;
+    recoveryNotified.current = true;
+    notify({
+      tone: "warning",
+      title: t("session.recovery.title"),
+      message: t("session.recovery.message", { count: recovery.recoveredCount })
+    });
+  }, [snapshot?.sessionRecovery, notify, t]);
 
   const dismissError = useCallback(() => setErrorDialog(null), []);
 

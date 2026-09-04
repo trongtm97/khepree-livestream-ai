@@ -1,6 +1,7 @@
 import { app } from "electron";
 import path from "node:path";
 import type {
+  AccountLiveManagerState,
   LiveManagerPhase,
   LiveManagerPublicState
 } from "../../../shared/live-manager-contracts";
@@ -9,24 +10,42 @@ import { assertLiveManagerActivityHelpers } from "../../../shared/live-manager-a
 import type { LiveEvent } from "../../../shared/live-types";
 import type { LiveEventBus } from "../../core/event-bus";
 import { resolveAppRoot } from "../../app-paths";
-import { LiveManagerObserver } from "./live-manager-observer";
+import { LiveManagerObserver, type SelectorPack } from "./live-manager-observer";
 import { isSelectorPackEmpty, loadLiveManagerSelectorPack } from "./selector-pack-loader";
 import os from "node:os";
 import fs from "node:fs";
 
 const ACTIVITY_POLL_MS = 1_500;
 
+export type LiveManagerObserverFactoryArgs = {
+  userDataDir: string;
+  pack: SelectorPack;
+  diagnosticsDir: string;
+  profileKey: string;
+};
+
 export type LiveManagerManagerOptions = {
+  /** Hard-bound account — event provenance never comes from UI focus. */
+  accountId: string;
+  /** Filesystem-safe profile key from TikTokAccount.profileKey. */
+  profileKey: string;
   eventBus: LiveEventBus;
   /** Optional persistence — never call LLM/media from here. */
   onEvent?: (event: LiveEvent) => void;
+  /** Override Electron userData (tests). */
+  userDataDir?: string;
+  appRoot?: string;
+  /** Test seam — skip real Playwright. */
+  createObserver?: (args: LiveManagerObserverFactoryArgs) => LiveManagerObserver;
 };
 
 /**
- * Owns Playwright LIVE Manager browser workflow for the operator.
+ * Owns one Playwright LIVE Manager browser for a single TikTok account.
  * Activity scans publish normalized events to the Event Bus only — never voice.
  */
 export class LiveManagerManager {
+  readonly accountId: string;
+  readonly profileKey: string;
   private observer?: LiveManagerObserver;
   private phase: LiveManagerPhase = "CLOSED";
   private message?: string;
@@ -35,12 +54,18 @@ export class LiveManagerManager {
   private activityTimer?: NodeJS.Timeout;
   private scanning = false;
   private publishedCount = 0;
-  private boundProfileKey?: string;
+  private boundProfileKey: string;
 
-  constructor(private readonly opts: LiveManagerManagerOptions) {}
+  constructor(private readonly opts: LiveManagerManagerOptions) {
+    if (!opts.accountId?.trim()) throw new Error("ACCOUNT_ID_REQUIRED");
+    if (!opts.profileKey?.trim()) throw new Error("INVALID_PROFILE_KEY");
+    this.accountId = opts.accountId.trim();
+    this.profileKey = opts.profileKey.trim();
+    this.boundProfileKey = this.profileKey;
+  }
 
   getPublicState(): LiveManagerPublicState {
-    const pack = loadLiveManagerSelectorPack(resolveAppRoot());
+    const pack = loadLiveManagerSelectorPack(this.opts.appRoot ?? resolveAppRoot());
     const empty = isSelectorPackEmpty(pack);
     const obs = this.observer;
     const phase = obs ? mapBrowserStatus(obs.getBrowserStatus()) : this.phase;
@@ -58,10 +83,24 @@ export class LiveManagerManager {
     };
   }
 
+  getAccountState(): AccountLiveManagerState {
+    const pub = this.getPublicState();
+    return {
+      accountId: this.accountId,
+      phase: pub.phase,
+      selectorPackVersion: pub.selectorPackVersion,
+      activityFeedConfigured: pub.activityFeedConfigured,
+      publishedEventCount: pub.publishedEventCount ?? 0,
+      lastCheckedAt: pub.lastCheckedAt,
+      message: pub.message,
+      lastDiagnosticScreenshot: pub.lastDiagnosticScreenshot
+    };
+  }
+
   async health() {
     const state = this.getPublicState();
     return {
-      component: "tiktok:live-manager",
+      component: `tiktok:live-manager:${this.accountId}`,
       status:
         state.phase === "READY"
           ? ("OK" as const)
@@ -78,39 +117,50 @@ export class LiveManagerManager {
   }
 
   /**
-   * Open LIVE Manager browser for a TikTok account profile.
+   * Open LIVE Manager browser for this account's profile.
    * profileKey must be filesystem-safe (TikTokAccount.profileKey).
+   * Bound managers ignore a mismatched key and keep their account profile.
    */
-  async open(profileKey = "tiktok-live-manager"): Promise<LiveManagerPublicState> {
+  async open(profileKey = this.boundProfileKey): Promise<LiveManagerPublicState> {
     if (this.opening) return this.getPublicState();
     this.opening = true;
     this.phase = "OPENING";
     this.message = "Opening TikTok LIVE Manager…";
     try {
-      if (this.observer && this.boundProfileKey !== profileKey) {
-        this.stopActivityPoll();
-        await this.observer.close();
-        this.observer = undefined;
-        this.publishedCount = 0;
+      const key = profileKey.trim() || this.boundProfileKey;
+      // One manager = one account = one profile — never swap mid-flight.
+      if (key !== this.boundProfileKey) {
+        throw new Error("LIVE_MANAGER_PROFILE_MISMATCH");
       }
 
       if (!this.observer) {
-        const pack = loadLiveManagerSelectorPack(resolveAppRoot());
+        const userDataDir = this.opts.userDataDir ?? app.getPath("userData");
+        const pack = loadLiveManagerSelectorPack(this.opts.appRoot ?? resolveAppRoot());
+        // Diagnostics per accountId so A screenshots never overwrite B.
         const diagnosticsDir = path.join(
-          app.getPath("userData"),
+          userDataDir,
           "diagnostics",
           "live-manager",
-          profileKey
+          this.accountId
         );
-        this.observer = new LiveManagerObserver(
-          app.getPath("userData"),
+        const args: LiveManagerObserverFactoryArgs = {
+          userDataDir,
           pack,
           diagnosticsDir,
-          profileKey
-        );
-        this.boundProfileKey = profileKey;
+          profileKey: this.boundProfileKey
+        };
+        this.observer =
+          this.opts.createObserver?.(args) ??
+          new LiveManagerObserver(
+            args.userDataDir,
+            args.pack,
+            args.diagnosticsDir,
+            args.profileKey
+          );
       } else {
-        this.observer.updateSelectorPack(loadLiveManagerSelectorPack(resolveAppRoot()));
+        this.observer.updateSelectorPack(
+          loadLiveManagerSelectorPack(this.opts.appRoot ?? resolveAppRoot())
+        );
       }
       await this.observer.open();
       this.lastCheckedAt = new Date().toISOString();
@@ -134,6 +184,7 @@ export class LiveManagerManager {
   async close(): Promise<LiveManagerPublicState> {
     this.stopActivityPoll();
     await this.observer?.close();
+    this.observer = undefined;
     this.phase = "CLOSED";
     this.message = undefined;
     this.lastCheckedAt = new Date().toISOString();
@@ -158,6 +209,32 @@ export class LiveManagerManager {
 
   async dispose(): Promise<void> {
     await this.close();
+  }
+
+  /** Same stamp + publish path as activity poll — multi-account isolation tests. */
+  ingestActivityEvent(event: LiveEvent): void {
+    this.publishStamped(event);
+  }
+
+  /** Mark open without Playwright (tests). */
+  markReadyForTest(): void {
+    this.phase = "READY";
+    this.lastCheckedAt = new Date().toISOString();
+    this.message = undefined;
+  }
+
+  getObserverForTest(): LiveManagerObserver | undefined {
+    return this.observer;
+  }
+
+  private publishStamped(event: LiveEvent): void {
+    const stamped: LiveEvent = {
+      ...event,
+      accountId: this.accountId
+    };
+    this.opts.eventBus.publish(stamped);
+    this.opts.onEvent?.(stamped);
+    this.publishedCount += 1;
   }
 
   private startActivityPoll(): void {
@@ -186,10 +263,8 @@ export class LiveManagerManager {
       const events = await this.observer.scanVisibleEvents();
       for (const event of events) {
         // Strict rule: LIVE Manager activity enters the app only via Event Bus.
-        // Never call media/voice from this path.
-        this.opts.eventBus.publish(event);
-        this.opts.onEvent?.(event);
-        this.publishedCount += 1;
+        // Never call media/voice from this path. Always stamp bound accountId.
+        this.publishStamped(event);
       }
       this.lastCheckedAt = new Date().toISOString();
       this.phase = mapBrowserStatus(this.observer.getBrowserStatus());

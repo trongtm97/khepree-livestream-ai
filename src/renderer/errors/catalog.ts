@@ -98,6 +98,22 @@ export const ERROR_COPY: Record<string, ErrorCopy> = {
     ),
     recommendedActions: retryCheck
   },
+  [ERROR_CODES.COMMENT_ACCOUNT_ID_MISSING]: {
+    title: L("Bình luận thiếu tài khoản", "Comment missing account"),
+    userMessage: L(
+      "Bình luận không có accountId nên bị bỏ qua để tránh lẫn shop.",
+      "A comment without accountId was dropped to prevent cross-shop mix-ups."
+    ),
+    recommendedActions: retryCheck
+  },
+  [ERROR_CODES.COMMENT_ACCOUNT_MISMATCH]: {
+    title: L("Bình luận không thuộc tài khoản", "Comment account mismatch"),
+    userMessage: L(
+      "Thao tác đã chỉ sai tài khoản TikTok cho bình luận này.",
+      "That action targeted the wrong TikTok account for this comment."
+    ),
+    recommendedActions: retryCheck
+  },
   [ERROR_CODES.KHEPREE_ACCESS_REQUIRED]: {
     title: L("Cần bản quyền Khepree", "Khepree license required"),
     userMessage: L(
@@ -523,6 +539,107 @@ export const ERROR_COPY: Record<string, ErrorCopy> = {
       ["Kiểm tra form", "Thử lại"],
       ["Check the form", "Try again"]
     )
+  },
+  [ERROR_CODES.LICENSE_MAX_CONCURRENT_LIVES]: {
+    title: L("Đã đủ số livestream theo gói", "Plan live limit reached"),
+    userMessage: L(
+      "Gói hiện tại của bạn cho phép tối đa {max} livestream hoạt động cùng lúc.",
+      "Your current plan allows at most {max} livestreams at the same time."
+    ),
+    recommendedActions: A(
+      ["Dừng một livestream đang chạy", "Nâng cấp gói trên Khepree"],
+      ["Stop a running livestream", "Upgrade your Khepree plan"]
+    )
+  },
+  [ERROR_CODES.LICENSE_MAX_TIKTOK_ACCOUNTS]: {
+    title: L("Đã đủ số tài khoản TikTok theo gói", "Plan account limit reached"),
+    userMessage: L(
+      "Gói hiện tại của bạn cho phép tối đa {max} tài khoản TikTok. Không xóa tài khoản cũ tự động.",
+      "Your current plan allows at most {max} TikTok accounts. Existing accounts are not deleted."
+    ),
+    recommendedActions: A(
+      ["Xóa bớt tài khoản không dùng (nếu muốn)", "Nâng cấp gói trên Khepree"],
+      ["Remove unused accounts if you choose", "Upgrade your Khepree plan"]
+    )
+  },
+  [ERROR_CODES.LICENSE_MULTI_LIVE_REQUIRED]: {
+    title: L("Gói chưa hỗ trợ multi-live", "Plan does not include multi-live"),
+    userMessage: L(
+      "Gói hiện tại chỉ cho phép một livestream. Nâng cấp để chạy nhiều tài khoản cùng lúc.",
+      "Your plan allows only one livestream. Upgrade to run multiple accounts at once."
+    ),
+    recommendedActions: A(
+      ["Dừng livestream hiện tại", "Nâng cấp gói trên Khepree"],
+      ["Stop the current livestream", "Upgrade your Khepree plan"]
+    )
+  },
+  [ERROR_CODES.HARDWARE_RAM_LOW]: {
+    title: L("Máy thiếu bộ nhớ", "Not enough memory"),
+    userMessage: L(
+      "Máy của bạn hiện không còn đủ bộ nhớ để mở thêm một livestream.",
+      "Your computer does not have enough free memory to open another livestream."
+    ),
+    recommendedActions: A(
+      ["Đóng ứng dụng khác", "Dừng một livestream đang chạy"],
+      ["Close other apps", "Stop a running livestream"]
+    )
+  },
+  [ERROR_CODES.HARDWARE_CPU_HIGH]: {
+    title: L("CPU đang quá tải", "CPU overloaded"),
+    userMessage: L(
+      "Máy đang chạy gần hết công suất CPU nên chưa mở thêm livestream được.",
+      "Your CPU is nearly saturated, so another livestream cannot start yet."
+    ),
+    recommendedActions: A(
+      ["Đợi máy dịu lại", "Dừng một livestream đang chạy"],
+      ["Wait for the machine to cool down", "Stop a running livestream"]
+    )
+  },
+  [ERROR_CODES.HARDWARE_TOO_MANY_RUNTIMES]: {
+    title: L("Máy không đủ sức cho thêm livestream", "Hardware live capacity reached"),
+    userMessage: L(
+      "Máy của bạn hiện không đủ tài nguyên để mở thêm một livestream (giới hạn phần cứng, không phải gói Khepree).",
+      "Your machine cannot open another livestream right now (hardware limit, not your Khepree plan)."
+    ),
+    recommendedActions: A(
+      ["Dừng một livestream đang chạy", "Kiểm tra RAM/CPU"],
+      ["Stop a running livestream", "Check RAM/CPU"]
+    )
+  },
+  [ERROR_CODES.HARDWARE_TOO_MANY_TIKTOK_WORKERS]: {
+    title: L("Quá nhiều kết nối TikTok", "Too many TikTok workers"),
+    userMessage: L(
+      "Máy đang giữ quá nhiều kết nối TikTok. Hãy ngắt kết nối bớt trước khi mở thêm livestream.",
+      "Too many TikTok connections are active. Disconnect some before starting another livestream."
+    ),
+    recommendedActions: retryCheck
+  },
+  [ERROR_CODES.HARDWARE_TOO_MANY_BROWSER_CONTEXTS]: {
+    title: L("Quá nhiều cửa sổ LIVE Manager", "Too many LIVE Manager windows"),
+    userMessage: L(
+      "Máy đang mở quá nhiều cửa sổ LIVE Manager. Đóng bớt rồi thử lại.",
+      "Too many LIVE Manager windows are open. Close some and try again."
+    ),
+    recommendedActions: retryCheck
+  },
+  [ERROR_CODES.HARDWARE_AI_QUEUE_BACKLOG]: {
+    title: L("Hàng đợi AI quá dài", "AI queue backlog"),
+    userMessage: L(
+      "Hàng đợi AI đang quá dài nên máy chưa nhận thêm livestream mới.",
+      "The AI queue is too long for another livestream to start safely."
+    ),
+    recommendedActions: A(
+      ["Đợi AI xử lý bớt", "Dừng một livestream đang chạy"],
+      ["Wait for the AI queue to drain", "Stop a running livestream"]
+    )
+  },
+  [ERROR_CODES.HARDWARE_CAPACITY]: {
+    title: L("Máy chưa đủ tài nguyên", "Hardware capacity reached"),
+    userMessage: L(
+      "Máy của bạn hiện không đủ tài nguyên để mở thêm livestream.",
+      "Your machine does not have enough capacity for another livestream."
+    ),
+    recommendedActions: retryCheck
   },
   [ERROR_CODES.UNKNOWN]: {
     title: L("Đã xảy ra lỗi", "Something went wrong"),

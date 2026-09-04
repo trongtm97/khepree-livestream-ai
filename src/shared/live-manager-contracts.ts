@@ -22,6 +22,27 @@ export interface LiveManagerPublicState {
   publishedEventCount?: number;
 }
 
+/** Per-account LIVE Manager snapshot — no BrowserContext. */
+export interface AccountLiveManagerState {
+  accountId: string;
+  phase: LiveManagerPhase;
+  selectorPackVersion?: string;
+  activityFeedConfigured: boolean;
+  publishedEventCount: number;
+  lastCheckedAt?: string;
+  message?: string;
+  lastDiagnosticScreenshot?: string;
+}
+
+export function emptyLiveManagerPublicState(): LiveManagerPublicState {
+  return {
+    phase: "CLOSED",
+    selectorPackEmpty: true,
+    activityFeedConfigured: false,
+    publishedEventCount: 0
+  };
+}
+
 export const LIVE_MANAGER_EMPTY_PACK_MESSAGE_VI =
   "Phiên bản giao diện TikTok hiện chưa được cấu hình để đọc Activity Feed.";
 export const LIVE_MANAGER_EMPTY_PACK_MESSAGE_EN =

@@ -1,32 +1,41 @@
 import type { LiveEventBus } from "../../core/event-bus";
 import type { LiveEvent } from "../../../shared/live-types";
-import { UNASSIGNED_ACCOUNT_ID } from "../../../shared/live-types";
 import type {
+  AccountTikTokState,
   TikTokConnectionPhase,
   TikTokPublicState
 } from "../../../shared/tiktok-contracts";
-import { normalizeUniqueId, TikTokWorkerProvider } from "./tiktok-worker-provider";
+import {
+  normalizeUniqueId,
+  shortAccountWorkerId,
+  TikTokWorkerProvider
+} from "./tiktok-worker-provider";
 
 const POLL_MS = 500;
 const BACKOFF_MS = [2_000, 5_000, 10_000, 20_000, 60_000] as const;
 const COMMENT_WINDOW_MS = 60_000;
 
 export type TikTokConnectorManagerOptions = {
+  /** Hard-bound account — event provenance never comes from UI focus. */
+  accountId: string;
+  /** Initial username (@uniqueId); connect() may refresh from repo via registry. */
+  uniqueId?: string;
   appRoot: string;
   eventBus: LiveEventBus;
   pythonExecutable?: string;
   startupTimeoutMs?: number;
-  /** Optional persistence — never call LLM from here. */
+  /** Optional sink — never call LLM from here. */
   onEvent?: (event: LiveEvent) => void;
-  getSavedUniqueId?: () => string | undefined;
-  setSavedUniqueId?: (id: string | undefined) => void;
+  /** Test seam. */
+  createProvider?: (accountId: string) => TikTokWorkerProvider;
 };
 
 /**
- * Owns TikTokLive worker lifecycle, non-blocking event drain → LiveEventBus,
- * and reconnect with backoff. Does not call Gemini.
+ * Owns one TikTokLive worker lifecycle for a single account.
+ * Does not call Gemini. Does not read focusedAccountId.
  */
 export class TikTokConnectorManager {
+  readonly accountId: string;
   readonly provider: TikTokWorkerProvider;
   private lastSequence = 0;
   private pollTimer?: NodeJS.Timeout;
@@ -45,14 +54,25 @@ export class TikTokConnectorManager {
   private draining = false;
 
   constructor(private readonly opts: TikTokConnectorManagerOptions) {
-    this.provider = new TikTokWorkerProvider(
-      opts.appRoot,
-      opts.pythonExecutable ?? process.env.KHEPREE_PYTHON ?? "python",
-      opts.startupTimeoutMs
-        ?? Number(process.env.KHEPREE_WORKER_STARTUP_TIMEOUT_MS ?? 20000)
-    );
-    const saved = opts.getSavedUniqueId?.()?.trim();
-    if (saved) this.uniqueId = normalizeUniqueId(saved);
+    if (!opts.accountId?.trim()) throw new Error("ACCOUNT_ID_REQUIRED");
+    this.accountId = opts.accountId.trim();
+    this.provider =
+      opts.createProvider?.(this.accountId) ??
+      new TikTokWorkerProvider({
+        appRoot: opts.appRoot,
+        workerName: `tiktok-worker-${shortAccountWorkerId(this.accountId)}`,
+        pythonExecutable: opts.pythonExecutable ?? process.env.KHEPREE_PYTHON ?? "python",
+        startupTimeoutMs:
+          opts.startupTimeoutMs ??
+          Number(process.env.KHEPREE_WORKER_STARTUP_TIMEOUT_MS ?? 20000)
+      });
+    if (opts.uniqueId?.trim()) {
+      this.uniqueId = normalizeUniqueId(opts.uniqueId);
+    }
+  }
+
+  getLastSequence(): number {
+    return this.lastSequence;
   }
 
   getPublicState(): TikTokPublicState {
@@ -72,21 +92,40 @@ export class TikTokConnectorManager {
     };
   }
 
-  async health() {
-    const state = this.getPublicState();
+  getAccountState(): AccountTikTokState {
+    const pub = this.getPublicState();
     return {
-      component: "tiktok:tiktoklive",
-      status:
-        state.phase === "CONNECTED"
-          ? ("OK" as const)
-          : state.phase === "CONNECTING" || state.phase === "RECONNECTING"
-            ? ("DEGRADED" as const)
-            : state.phase === "DISCONNECTED"
-              ? ("DISABLED" as const)
-              : ("DOWN" as const),
-      message: state.message ?? state.phase,
-      checkedAt: state.lastCheckedAt ?? new Date().toISOString()
+      accountId: this.accountId,
+      phase: pub.phase,
+      connected: pub.connected,
+      username: pub.uniqueId,
+      connectedAt: pub.connectedAt,
+      eventCount: pub.eventCount,
+      commentsPerMinute: pub.commentsPerMinute,
+      reconnectAttempt: pub.reconnectAttempt,
+      message: pub.message,
+      lastCheckedAt: pub.lastCheckedAt,
+      dependencyInstalled: pub.dependencyInstalled,
+      nextRetryMs: pub.nextRetryMs,
+      health: {
+        component: `tiktok:tiktoklive:${this.accountId}`,
+        status:
+          pub.phase === "CONNECTED"
+            ? ("OK" as const)
+            : pub.phase === "CONNECTING" || pub.phase === "RECONNECTING"
+              ? ("DEGRADED" as const)
+              : pub.phase === "DISCONNECTED"
+                ? ("DISABLED" as const)
+                : ("DOWN" as const),
+        message: pub.message ?? pub.phase,
+        checkedAt: pub.lastCheckedAt ?? new Date().toISOString()
+      }
     };
+  }
+
+  async health() {
+    const state = this.getAccountState();
+    return state.health;
   }
 
   async connect(rawUniqueId: string): Promise<TikTokPublicState> {
@@ -96,7 +135,6 @@ export class TikTokConnectorManager {
     this.clearReconnectTimer();
     this.wantConnected = true;
     this.uniqueId = uniqueId;
-    this.opts.setSavedUniqueId?.(uniqueId);
     this.reconnectAttempt = 0;
     this.nextRetryMs = undefined;
     this.phase = "CONNECTING";
@@ -144,13 +182,60 @@ export class TikTokConnectorManager {
     await this.provider.disconnect().catch(() => undefined);
   }
 
+  /**
+   * Same stamp + publish path as worker drain — used by multi-account isolation tests.
+   * Always overwrites accountId with this connector's bound account.
+   */
+  ingestWorkerEvent(event: LiveEvent): void {
+    this.publishStamped(event);
+  }
+
+  /** Mark connected without a real worker (tests). */
+  markConnectedForTest(uniqueId: string): void {
+    this.wantConnected = true;
+    this.uniqueId = normalizeUniqueId(uniqueId);
+    this.phase = "CONNECTED";
+    this.connectedAt = new Date().toISOString();
+    this.message = `Connected to ${this.uniqueId}`;
+    this.lastCheckedAt = this.connectedAt;
+    this.dependencyInstalled = true;
+  }
+
+  private publishStamped(event: LiveEvent): void {
+    if (typeof event.sequence === "number" && event.sequence > this.lastSequence) {
+      this.lastSequence = event.sequence;
+    }
+    this.eventCount += 1;
+    if (event.type === "COMMENT") {
+      this.commentTimestamps.push(Date.now());
+      this.trimCommentWindow();
+    }
+    const stamped: LiveEvent = {
+      ...event,
+      accountId: this.accountId
+    };
+    this.opts.eventBus.publish(stamped);
+    this.opts.onEvent?.(stamped);
+
+    if (event.type === "DISCONNECT" && this.wantConnected) {
+      this.phase = "RECONNECTING";
+      this.message = "Livestream disconnected — reconnecting…";
+      this.scheduleReconnect();
+    }
+    if (event.type === "CONNECT") {
+      this.phase = "CONNECTED";
+      this.reconnectAttempt = 0;
+      this.nextRetryMs = undefined;
+      this.connectedAt = event.timestamp || new Date().toISOString();
+      this.message = `Connected to ${this.uniqueId ?? ""}`;
+    }
+  }
+
   private startPollLoop(): void {
     if (this.pollTimer) return;
     this.pollTimer = setInterval(() => {
       void this.pollOnce();
     }, POLL_MS);
-    // Unref so poll does not keep Electron main alive alone if needed — keep referenced
-    // because livestream session should keep process attentive.
   }
 
   private stopPollLoop(): void {
@@ -169,36 +254,9 @@ export class TikTokConnectorManager {
         if (typeof event.sequence !== "number" || event.sequence <= this.lastSequence) {
           continue;
         }
-        this.lastSequence = event.sequence;
-        this.eventCount += 1;
-        if (event.type === "COMMENT") {
-          this.commentTimestamps.push(Date.now());
-          this.trimCommentWindow();
-        }
-        // Stamp account provenance (real accountId wiring lands in later multi-live tasks).
-        const stamped: LiveEvent = {
-          ...event,
-          accountId: event.accountId || UNASSIGNED_ACCOUNT_ID
-        };
-        // Strict rule: worker events only enter the app via Event Bus.
-        this.opts.eventBus.publish(stamped);
-        this.opts.onEvent?.(stamped);
-
-        if (event.type === "DISCONNECT" && this.wantConnected) {
-          this.phase = "RECONNECTING";
-          this.message = "Livestream disconnected — reconnecting…";
-          this.scheduleReconnect();
-        }
-        if (event.type === "CONNECT") {
-          this.phase = "CONNECTED";
-          this.reconnectAttempt = 0;
-          this.nextRetryMs = undefined;
-          this.connectedAt = event.timestamp || new Date().toISOString();
-          this.message = `Connected to ${this.uniqueId ?? ""}`;
-        }
+        this.publishStamped(event);
       }
 
-      // Health probe occasionally when idle drain
       if (events.length === 0 && this.wantConnected) {
         const detail = await this.provider.healthDetail();
         this.dependencyInstalled = detail.dependencyInstalled;
@@ -297,4 +355,7 @@ export function assertTikTokConnectorContract(): void {
   }
   if (normalizeUniqueId("shop") !== "@shop") throw new Error("normalizeUniqueId failed");
   if (normalizeUniqueId("@@shop") !== "@shop") throw new Error("normalizeUniqueId double-at failed");
+  if (shortAccountWorkerId("acc_abc-123!") !== "accabc123") {
+    throw new Error("shortAccountWorkerId failed");
+  }
 }

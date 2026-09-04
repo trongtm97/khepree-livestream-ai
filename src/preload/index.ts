@@ -39,10 +39,12 @@ const api: RendererApi = {
   captureLiveManagerDiagnostic: (accountId: string) =>
     ipcRenderer.invoke(IPC.LIVE_MANAGER_DIAGNOSTIC, accountId),
 
-  pinComment: (eventId: string) => ipcRenderer.invoke(IPC.COMMENT_PIN, eventId),
-  markCommentReplied: (eventId: string) =>
-    ipcRenderer.invoke(IPC.COMMENT_MARK_REPLIED, eventId),
-  skipComment: (eventId: string) => ipcRenderer.invoke(IPC.COMMENT_SKIP, eventId),
+  pinComment: (accountId: string, eventId: string) =>
+    ipcRenderer.invoke(IPC.COMMENT_PIN, accountId, eventId),
+  markCommentReplied: (accountId: string, eventId: string) =>
+    ipcRenderer.invoke(IPC.COMMENT_MARK_REPLIED, accountId, eventId),
+  skipComment: (accountId: string, eventId: string) =>
+    ipcRenderer.invoke(IPC.COMMENT_SKIP, accountId, eventId),
 
   saveProduct: (product: ProductDNA) => ipcRenderer.invoke(IPC.PRODUCT_SAVE, product),
   deleteProduct: (id: string) => ipcRenderer.invoke(IPC.PRODUCT_DELETE, id),

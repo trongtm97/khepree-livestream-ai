@@ -56,6 +56,7 @@ export class LiveRuntime {
   private readonly onApprovalChanged?: (item: ApprovalItem) => void;
   private disposed = false;
   private productId?: string;
+  private startedAtIso?: string;
   private lastHealth: RuntimeHealth;
 
   constructor(deps: LiveRuntimeDeps) {
@@ -86,10 +87,12 @@ export class LiveRuntime {
       getCurrentProduct: () => this.resolveCurrentProduct(),
       onApprovalChanged: (item) => this.persistApproval(item),
       onSessionStart: (sessionId, mode) => {
+        this.startedAtIso = new Date().toISOString();
         this.sessions.startWithId(sessionId, mode, this.account.id);
         this.touchHealth("OK", "live");
       },
       onSessionEnd: (sessionId, finalState) => {
+        this.startedAtIso = undefined;
         this.sessions.end(sessionId, finalState);
         this.touchHealth("DISABLED", "stopped");
       }
@@ -108,6 +111,10 @@ export class LiveRuntime {
 
   get sessionId(): string | undefined {
     return this.orchestrator.sessionId;
+  }
+
+  get liveStartedAt(): string | undefined {
+    return this.startedAtIso;
   }
 
   get state(): string {

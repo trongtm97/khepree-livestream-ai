@@ -5,9 +5,6 @@ import type {
   LiveEvent,
   TikTokAccount
 } from "../../shared/live-types";
-import {
-  DEFAULT_MAX_CONCURRENT_LIVES
-} from "../../shared/live-types";
 import { DEFAULT_ACCOUNT_AUTOMATION_MODE } from "../../shared/tiktok-account";
 import type { LlmProvider } from "../connectors/llm/types";
 import type { MediaProvider } from "../connectors/media/types";
@@ -20,6 +17,7 @@ import {
   LiveRuntime,
   type LiveRuntimeRepositories
 } from "./live-runtime";
+import type { LiveCapacityService } from "./live-capacity-service";
 
 export type MultiLiveRuntimeManagerDeps = {
   accounts: TikTokAccountRepository;
@@ -28,7 +26,17 @@ export type MultiLiveRuntimeManagerDeps = {
   llm: LlmProvider;
   /** Khepree entitlement gate (fail-closed in production). */
   assertProductAccess: (feature?: string) => void;
-  maxConcurrentLives?: number;
+  /**
+   * License + hardware capacity (authoritative for startLive).
+   * Required — do not fall back to Infinity.
+   */
+  capacity: LiveCapacityService;
+  /** Optional live resource counters (workers / browsers / AI queue). */
+  getResourceExtras?: () => {
+    activeTikTokWorkers: number;
+    activeBrowserContexts: number;
+    aiQueueLength: number;
+  };
   /** Factory so each runtime can own a media session later. */
   createMedia?: () => MediaProvider;
   /**
@@ -38,6 +46,10 @@ export type MultiLiveRuntimeManagerDeps = {
   assertReadyToStart?: (account: TikTokAccount, runtime: LiveRuntime) => void;
   onEvent?: (event: LiveEvent) => void;
   onApprovalChanged?: (item: ApprovalItem) => void;
+  /** Bind AI scheduler session after live start (optional). */
+  onLiveStarted?: (accountId: string, sessionId: string) => void;
+  /** Cancel queued AI jobs when live stops (optional). */
+  onLiveStopped?: (accountId: string) => void;
 };
 
 /**
@@ -47,13 +59,10 @@ export type MultiLiveRuntimeManagerDeps = {
 export class MultiLiveRuntimeManager {
   private readonly runtimes = new Map<string, LiveRuntime>();
   private readonly unsubs = new Map<string, () => void>();
-  private readonly maxConcurrent: number;
   private focusedAccountId?: string;
   private disposed = false;
 
-  constructor(private readonly deps: MultiLiveRuntimeManagerDeps) {
-    this.maxConcurrent = deps.maxConcurrentLives ?? DEFAULT_MAX_CONCURRENT_LIVES;
-  }
+  constructor(private readonly deps: MultiLiveRuntimeManagerDeps) {}
 
   get focusedId(): string | undefined {
     return this.focusedAccountId;
@@ -121,10 +130,18 @@ export class MultiLiveRuntimeManager {
 
     this.deps.assertProductAccess();
 
-    const activeCount = this.countRunning();
-    if (activeCount >= this.maxConcurrent) {
-      throw new Error("CONCURRENCY_LIMIT");
-    }
+    const extras = this.deps.getResourceExtras?.() ?? {
+      activeTikTokWorkers: 0,
+      activeBrowserContexts: 0,
+      aiQueueLength: 0
+    };
+    this.deps.capacity.assertCanStartLive({
+      activeRuntimes: this.countRunning(),
+      activeTikTokWorkers: extras.activeTikTokWorkers,
+      activeBrowserContexts: extras.activeBrowserContexts,
+      aiQueueLength: extras.aiQueueLength,
+      accountCount: this.deps.accounts.list().length
+    });
 
     const runtime = this.ensureRuntime(accountId);
 
@@ -134,19 +151,42 @@ export class MultiLiveRuntimeManager {
     this.deps.assertReadyToStart?.(account, runtime);
 
     runtime.start();
+    const sessionId = runtime.sessionId;
+    if (sessionId) this.deps.onLiveStarted?.(accountId, sessionId);
     return runtime;
+  }
+
+  /** Preflight for UI — does not start. */
+  canStartLive(accountId: string) {
+    const account = this.deps.accounts.get(accountId);
+    if (!account) throw new Error("TIKTOK_ACCOUNT_NOT_FOUND");
+    const extras = this.deps.getResourceExtras?.() ?? {
+      activeTikTokWorkers: 0,
+      activeBrowserContexts: 0,
+      aiQueueLength: 0
+    };
+    const already = this.runtimes.get(accountId)?.isRunning === true;
+    return this.deps.capacity.canStartLive({
+      activeRuntimes: this.countRunning(),
+      activeTikTokWorkers: extras.activeTikTokWorkers,
+      activeBrowserContexts: extras.activeBrowserContexts,
+      aiQueueLength: extras.aiQueueLength,
+      accountCount: this.deps.accounts.list().length,
+      accountAlreadyLive: already
+    });
   }
 
   stopLive(accountId: string): void {
     const runtime = this.runtimes.get(accountId);
     if (!runtime) return;
     runtime.stop();
+    this.deps.onLiveStopped?.(accountId);
   }
 
   /** App quit / emergency global stop — does not dispose Gemini, DB, or Khepree. */
   stopAll(): void {
-    for (const runtime of this.runtimes.values()) {
-      runtime.stop();
+    for (const id of [...this.runtimes.keys()]) {
+      this.stopLive(id);
     }
   }
 
@@ -157,6 +197,7 @@ export class MultiLiveRuntimeManager {
     this.unsubs.delete(accountId);
     runtime.dispose();
     this.runtimes.delete(accountId);
+    this.deps.onLiveStopped?.(accountId);
     if (this.focusedAccountId === accountId) this.focusedAccountId = undefined;
   }
 
@@ -221,6 +262,21 @@ export class MultiLiveRuntimeManager {
     return n;
   }
 
+  get maxConcurrentLives(): number {
+    return this.deps.capacity.getLicenseLimits().maxConcurrentLives;
+  }
+
+  /** Pending approvals across all runtimes — for Live Center operator queue. */
+  listAllPendingApprovals(): ApprovalItem[] {
+    const out: ApprovalItem[] = [];
+    for (const rt of this.runtimes.values()) {
+      for (const item of rt.listApprovals()) {
+        out.push(item);
+      }
+    }
+    return out;
+  }
+
   /**
    * Resolve account for legacy IPC that omits accountId.
    * Production: always requires explicit accountId.
@@ -261,6 +317,7 @@ export class MultiLiveRuntimeManager {
       label: account.label,
       isRunning: runtime?.isRunning ?? false,
       sessionId: runtime?.sessionId,
+      liveStartedAt: runtime?.liveStartedAt,
       state: runtime?.state ?? "IDLE",
       automationMode:
         runtime?.automationMode ??

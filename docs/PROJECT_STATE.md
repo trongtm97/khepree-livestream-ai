@@ -1,33 +1,43 @@
-# Project state — v0.1.0 foundation
+# Project state — Development milestone 0.2.x
 
-## Implemented
+> package.json vẫn `0.1.0`. Đây **không** phải claim production release.
 
-- Desktop scaffold and secure process split.
-- Khepree integration contract and client-side access state foundation.
-- SQLite data model + `app_meta` settings (UI locale).
-- Event bus.
-- Sales state machine.
-- Comment priority scorer.
-- Approval queue/timer logic.
-- Live Orchestrator.
-- Gemini Web API worker.
-- TikTokLive event worker.
-- LIVE Manager Playwright observer scaffold.
-- Operator dashboard with **modular renderer UI** (`src/renderer/app`, `pages/`, `components/`) and VI/EN i18n.
-- Seller-facing navigation (Overview → Help), first-run onboarding, and **in-app help** (micro tips, page guides, searchable offline Help Center).
-- Seller-facing **error dialog + toast** feedback (`src/shared/errors`, `src/renderer/errors`) with VI/EN catalog; no `alert()` in production UI.
-- **Pre-livestream readiness checklist** (READY / WARNING / BLOCKING) with per-item CTAs and Start Live gate explanation.
-- Development mock LLM/media connectors.
-- Worker health management.
+## Milestone 0.2 focus
+
+Multi-live domain + runtime + connectors + Live Center UI + license/hardware capacity + Vitest CI.
+
+## Implemented (wired in `AppContainer`)
+
+- Secure Electron process split + typed preload.
+- SQLite multi-live schema (accounts, per-account settings, sessions with crash status).
+- `MultiLiveRuntimeManager` / per-account `LiveRuntime`.
+- `TikTokConnectorRegistry` + `LiveManagerRegistry`.
+- Comment feed with required `accountId` + per-account buffers.
+- Approval Engine + cross-account resolve protection.
+- `AiRequestScheduler` over `LlmProviderManager`.
+- `LiveCapacityService` (Khepree license limits ≠ `ResourceGovernor` hardware).
+- Live session crash recovery on startup (no auto-resume).
+- Live Center UI + Account Detail tabs (VI/EN i18n).
+- Operator feedback: error dialog, toasts, readiness checklist, help.
+- Vitest suite (`npm test`) + GitHub Actions CI + foundation static check.
 
 ## Deliberately not claimed production-ready
 
-- Live Khepree cross-system registration/signing key.
-- Gemini account/cookie onboarding UI.
-- TikTok LIVE Manager selector packs against a real live account.
-- LiveTalking/MuseTalk/TTS/virtual camera runtime.
-- TikTok order-feed parsing.
-- Product importer.
-- Policy packs by market.
-- Installer smoke on a real Windows host.
-- Code signing.
+- Live Khepree registration + pinned production lease signing key.
+- Gemini real-account onboarding smoke.
+- TikTokLive / LIVE Manager against a **real** seller account.
+- Selector pack validation on live TikTok UI.
+- TTS / avatar / virtual camera.
+- Windows clean-install installer smoke + code signing.
+- Auto-update / telemetry.
+
+## How to verify
+
+```bash
+npm ci
+npm run typecheck
+npm test
+npm run test:foundation
+```
+
+See `docs/FEATURE_MATRIX.md` for per-module status.

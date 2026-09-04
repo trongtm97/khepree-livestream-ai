@@ -1,3 +1,6 @@
+import type { AccountTikTokState } from "./tiktok-contracts";
+import type { AccountLiveManagerState } from "./live-manager-contracts";
+
 export type AutomationMode =
   | "MANUAL_ASSIST"
   | "ASSISTED"
@@ -62,6 +65,8 @@ export interface AccountLiveSettings {
 }
 
 /** One livestream run. An account has many historical sessions; at most one active. */
+export type LiveSessionStatus = "RUNNING" | "ENDED" | "ABORTED" | "CRASH_RECOVERED";
+
 export interface LiveSession {
   id: string;
   accountId: string;
@@ -69,7 +74,12 @@ export interface LiveSession {
   endedAt?: string;
   automationMode: AutomationMode;
   finalState?: string;
+  status?: LiveSessionStatus;
 }
+
+/** Marked on app startup when a prior process left ended_at NULL. */
+export const LIVE_SESSION_CRASH_RECOVERED = "CRASH_RECOVERED";
+export const LIVE_SESSION_ABORTED = "ABORTED";
 
 /** Operator-facing per-account live status (MultiLiveRuntimeManager snapshots). */
 export interface AccountLiveSnapshot {
@@ -78,11 +88,17 @@ export interface AccountLiveSnapshot {
   label?: string;
   isRunning: boolean;
   sessionId?: string;
+  /** ISO timestamp when this process started the current live (for elapsed UI). */
+  liveStartedAt?: string;
   state: string;
   automationMode: AutomationMode;
   currentProductId?: string;
   pendingApprovalCount: number;
   health: RuntimeHealth;
+  /** Per-account TikTok connector state when registry has one. */
+  tiktok?: AccountTikTokState;
+  /** Per-account LIVE Manager browser state when registry has one. */
+  liveManager?: AccountLiveManagerState;
 }
 
 /**
@@ -91,7 +107,7 @@ export interface AccountLiveSnapshot {
  */
 export const UNASSIGNED_ACCOUNT_ID = "acc_unassigned";
 
-/** Default max concurrent livestreams across accounts (Manager-enforced). */
+/** Legacy UI fallback only — real caps from Khepree `max_concurrent_lives` (fail-closed). */
 export const DEFAULT_MAX_CONCURRENT_LIVES = 5;
 
 export interface LiveEvent {

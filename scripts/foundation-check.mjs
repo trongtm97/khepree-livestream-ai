@@ -246,13 +246,23 @@ if (!appContainer.includes("LlmProviderManager") || appContainer.includes("reado
   console.error("AppContainer must wire LlmProviderManager (keep Mock via manager)");
   failed = true;
 }
-if (!appContainer.includes("TikTokConnectorManager") || !appContainer.includes("readonly tiktok")) {
-  console.error("AppContainer must wire TikTokConnectorManager");
+if (!appContainer.includes("AiRequestScheduler") || !appContainer.includes("llm: this.aiScheduler")) {
+  console.error("AppContainer must route LiveRuntime LLM calls through AiRequestScheduler");
+  failed = true;
+}
+if (!appContainer.includes("TikTokConnectorRegistry") || !appContainer.includes("readonly tiktok")) {
+  console.error("AppContainer must wire TikTokConnectorRegistry");
+  failed = true;
+}
+if (appContainer.includes("requireFocusedOrThrow")) {
+  console.error("AppContainer must not route TikTok events via requireFocusedOrThrow");
   failed = true;
 }
 
 for (const file of [
   "src/main/connectors/tiktok/tiktok-connector-manager.ts",
+  "src/main/connectors/tiktok/tiktok-connector-registry.ts",
+  "src/main/connectors/tiktok/live-manager-registry.ts",
   "src/shared/tiktok-contracts.ts",
   "src/renderer/components/connections/TikTokConnectorPanel.tsx",
   "src/main/connectors/tiktok/live-manager-manager.ts",
@@ -295,6 +305,16 @@ if (registerTikTok.includes("TIKTOK_CONNECTOR_NOT_ENABLED_IN_FOUNDATION")) {
 }
 if (!registerTikTok.includes("container.tiktok.connect") || !registerTikTok.includes("tiktok: container.tiktok.getPublicState")) {
   console.error("register.ts must expose TikTok connect + snapshot.tiktok");
+  failed = true;
+}
+if (registerTikTok.includes("setTikTokUniqueId(account.username)")) {
+  console.error("TikTok connect must not use legacy settings uniqueId as runtime source-of-truth");
+  failed = true;
+}
+if (/TIKTOK_CONNECT[\s\S]*requireFocusedOrThrow|onEvent:[\s\S]*requireFocusedOrThrow/.test(
+  fs.readFileSync(path.join(root, "src/main/app-container.ts"), "utf8")
+)) {
+  console.error("TikTok event path must not use focused account routing");
   failed = true;
 }
 if (
@@ -360,6 +380,37 @@ if (/\.speak|media\.|llm\./i.test(liveManagerMgr)) {
 }
 if (!liveManagerMgr.includes("async open(profileKey") || !liveManagerMgr.includes("boundProfileKey")) {
   console.error("LiveManagerManager.open must take profileKey");
+  failed = true;
+}
+if (!liveManagerMgr.includes("publishStamped") || !liveManagerMgr.includes("this.accountId")) {
+  console.error("LiveManagerManager must stamp bound accountId on events");
+  failed = true;
+}
+
+const liveManagerRegistry = fs.readFileSync(
+  path.join(root, "src/main/connectors/tiktok/live-manager-registry.ts"),
+  "utf8"
+);
+if (!liveManagerRegistry.includes("class LiveManagerRegistry") || !liveManagerRegistry.includes("Map<string, LiveManagerManager>")) {
+  console.error("LiveManagerRegistry must own Map of per-account managers");
+  failed = true;
+}
+if (liveManagerRegistry.includes("focusedAccountId") || liveManagerRegistry.includes("focusedId")) {
+  console.error("LiveManagerRegistry must not route via focused account");
+  failed = true;
+}
+
+const appContainerLm = fs.readFileSync(path.join(root, "src/main/app-container.ts"), "utf8");
+if (!appContainerLm.includes("LiveManagerRegistry") || !appContainerLm.includes("readonly liveManager")) {
+  console.error("AppContainer must wire LiveManagerRegistry");
+  failed = true;
+}
+if (appContainerLm.includes("requireFocusedOrThrow")) {
+  console.error("AppContainer must not use requireFocusedOrThrow");
+  failed = true;
+}
+if (/new LiveManagerRegistry\([\s\S]*?focusedId|new LiveManagerRegistry\([\s\S]*?focusedAccountId/.test(appContainerLm)) {
+  console.error("AppContainer LIVE Manager path must not use focused account routing");
   failed = true;
 }
 
@@ -437,6 +488,35 @@ if (!commentsPage.includes("matchesCommentFilter") || !commentsPage.includes("co
   console.error("CommentsPage missing filter/empty-state wiring");
   failed = true;
 }
+if (!commentsPage.includes("accountFilter") || !commentsPage.includes("comments.accountAll")) {
+  console.error("CommentsPage must support multi-account filter");
+  failed = true;
+}
+if (!commentsPage.includes("item.accountId") || !commentsPage.includes("pinComment(item.accountId")) {
+  console.error("CommentsPage actions must pass accountId");
+  failed = true;
+}
+
+const commentFeedSvc = fs.readFileSync(path.join(root, "src/main/live/comment-feed-service.ts"), "utf8");
+for (const needle of [
+  "accountId",
+  "sessionId",
+  "getSnapshotForAccount",
+  "MAX_PER_ACCOUNT",
+  "COMMENT_ACCOUNT_MISMATCH",
+  "COMMENT_ACCOUNT_ID_MISSING"
+]) {
+  if (!commentFeedSvc.includes(needle)) {
+    console.error("comment-feed-service missing:", needle);
+    failed = true;
+  }
+}
+
+const commentFeedTypes = fs.readFileSync(path.join(root, "src/shared/comment-feed.ts"), "utf8");
+if (!commentFeedTypes.includes("accountId: string") || !commentFeedTypes.includes("sessionId?: string")) {
+  console.error("CommentFeedItem must require accountId and optional sessionId");
+  failed = true;
+}
 
 const appComments = fs.readFileSync(path.join(root, "src/main/app-container.ts"), "utf8");
 if (!appComments.includes("CommentFeedService") || !appComments.includes("comments.start()")) {
@@ -445,7 +525,11 @@ if (!appComments.includes("CommentFeedService") || !appComments.includes("commen
 }
 
 const ipcComments = fs.readFileSync(path.join(root, "src/shared/ipc.ts"), "utf8");
-for (const needle of ["COMMENT_PIN", "comments: CommentFeedSnapshot", "pinComment"]) {
+for (const needle of [
+  "COMMENT_PIN",
+  "comments: CommentFeedSnapshot",
+  "pinComment(accountId: string, eventId: string)"
+]) {
   if (!ipcComments.includes(needle)) {
     console.error("ipc.ts missing comment contract:", needle);
     failed = true;
@@ -552,6 +636,7 @@ const connectionSrc = fs.readFileSync(path.join(root, "src/main/db/connection.ts
 for (const needle of [
   "CURRENT_SCHEMA_VERSION",
   "migrateV2MultiLive",
+  "migrateV3LiveSessionStatus",
   "tiktok_accounts",
   "account_live_settings",
   "schema.version"
@@ -560,6 +645,31 @@ for (const needle of [
     console.error("connection.ts multi-live migration missing:", needle);
     failed = true;
   }
+}
+if (!connectionSrc.includes("CURRENT_SCHEMA_VERSION = 3")) {
+  console.error("schema version must be 3 for crash recovery status column");
+  failed = true;
+}
+
+const sessionRecoverySrc = path.join(root, "src/main/live/live-session-recovery.ts");
+if (!fs.existsSync(sessionRecoverySrc)) {
+  console.error("MISSING live-session-recovery.ts");
+  failed = true;
+} else {
+  const recoverySrc = fs.readFileSync(sessionRecoverySrc, "utf8");
+  if (!recoverySrc.includes("recoverOnStartup") || !recoverySrc.includes("CRASH_RECOVERED")) {
+    console.error("LiveSessionRecoveryService must recover stale sessions as CRASH_RECOVERED");
+    failed = true;
+  }
+}
+
+const appContainerRecovery = fs.readFileSync(path.join(root, "src/main/app-container.ts"), "utf8");
+if (
+  !appContainerRecovery.includes("LiveSessionRecoveryService") ||
+  !appContainerRecovery.includes("recoverOnStartup")
+) {
+  console.error("AppContainer.initialize must run live session crash recovery");
+  failed = true;
 }
 
 for (const file of [
@@ -602,7 +712,8 @@ for (const needle of [
   "startLive",
   "stopLive",
   "stopAll",
-  "CONCURRENCY_LIMIT",
+  "assertCanStartLive",
+  "capacity",
   "ACCOUNT_ID_REQUIRED",
   "getAllSnapshots"
 ]) {
@@ -665,8 +776,16 @@ if (registerIpcAware.includes("resolveLiveAccountId")) {
   console.error("register.ts must not use legacy omit-accountId shim");
   failed = true;
 }
-if (!registerIpcAware.includes("account.profileKey")) {
-  console.error("LIVE_MANAGER_OPEN must pass account.profileKey");
+if (!liveManagerRegistry.includes("account.profileKey")) {
+  console.error("LiveManagerRegistry.open must use account.profileKey from DB");
+  failed = true;
+}
+if (!registerIpcAware.includes("container.liveManager.open(id)")) {
+  console.error("LIVE_MANAGER_OPEN must open by accountId via registry");
+  failed = true;
+}
+if (registerIpcAware.includes("liveManager.open(account.profileKey)")) {
+  console.error("LIVE_MANAGER_OPEN must not pass profileKey from IPC — registry looks up account");
   failed = true;
 }
 

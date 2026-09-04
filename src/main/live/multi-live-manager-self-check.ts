@@ -18,6 +18,7 @@ import {
 import { MockLlmProvider } from "../connectors/llm/mock-llm-provider";
 import { MockMediaProvider } from "../connectors/media/mock-media-provider";
 import { MultiLiveRuntimeManager } from "./multi-live-runtime-manager";
+import { createTestLiveCapacity } from "./live-capacity-service";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);
@@ -56,7 +57,7 @@ export function assertMultiLiveManager(): void {
       llm: new MockLlmProvider(),
       createMedia: () => new MockMediaProvider(),
       assertProductAccess: () => undefined,
-      maxConcurrentLives: 5
+      capacity: createTestLiveCapacity({ maxConcurrentLives: 5 })
     });
 
     // Production-style: no accountId → fail (packaged)
@@ -142,16 +143,17 @@ export function assertMultiLiveManager(): void {
       llm: new MockLlmProvider(),
       createMedia: () => new MockMediaProvider(),
       assertProductAccess: () => undefined,
-      maxConcurrentLives: 1
+      capacity: createTestLiveCapacity({ maxConcurrentLives: 1, multiLiveEnabled: true })
     });
     limited.startLive(a.id);
     let limitedHit = false;
     try {
       limited.startLive(b.id);
     } catch (err) {
-      limitedHit = err instanceof Error && err.message === "CONCURRENCY_LIMIT";
+      limitedHit =
+        err instanceof Error && err.message.startsWith("LICENSE_MAX_CONCURRENT_LIVES:");
     }
-    assert(limitedHit, "concurrency limit must fire");
+    assert(limitedHit, "license concurrency limit must fire");
     limited.dispose();
   } finally {
     manager?.dispose();

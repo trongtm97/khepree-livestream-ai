@@ -8,6 +8,16 @@ export const KHEPREE_LIVESTREAM_CATALOG = {
   redirectUri: "khepreelivestreamai://auth/callback",
   protocol: "khepreelivestreamai",
   accessFeatureKey: "livestream_ai.access",
+  /**
+   * Capacity feature keys (Khepree convention: `*_enabled`, `max_*`, `max_concurrent_*`).
+   * Must be registered on platform plan_features; client fail-closes when absent.
+   * @see LIVESTREAM_FEATURE_KEYS in khepree-livestream-features.ts
+   */
+  featureKeys: {
+    multiLiveEnabled: "multi_live_enabled",
+    maxTikTokAccounts: "max_tiktok_accounts",
+    maxConcurrentLives: "max_concurrent_lives"
+  },
   productPath: "/vi/products/khepree-livestream-ai",
   plans: [
     {

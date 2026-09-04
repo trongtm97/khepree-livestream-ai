@@ -1,5 +1,6 @@
 import { app, shell } from "electron";
 import { KHEPREE_LIVESTREAM_CATALOG } from "../../shared/khepree-catalog";
+import { LIVESTREAM_DEV_MOCK_FEATURES } from "../../shared/khepree-livestream-features";
 import type {
   DesktopPurchasablePlan,
   KhepreePublicState,
@@ -56,10 +57,7 @@ export class KhepreeAccessService {
         productSlug: this.config.productSlug,
         productUrl: productPublicUrl(this.config.website, this.config.productPath),
         features: {
-          [this.config.accessFeatureKey]: true,
-          supervised_auto: true,
-          full_auto: false,
-          "devices.max": 1
+          ...LIVESTREAM_DEV_MOCK_FEATURES
         },
         catalogHint: this.state.catalogHint,
         checkoutAvailable: false,

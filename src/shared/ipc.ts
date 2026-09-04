@@ -18,6 +18,13 @@ import type { OnboardingState } from "./onboarding";
 import type { TikTokPublicState } from "./tiktok-contracts";
 import type { LiveManagerPublicState } from "./live-manager-contracts";
 import type { CommentFeedSnapshot } from "./comment-feed";
+import type { LivestreamLicenseLimits } from "./khepree-livestream-features";
+
+/** Operator-facing crash recovery notice after abnormal app exit. */
+export interface SessionRecoveryNotice {
+  recoveredCount: number;
+  recoveredAt: string;
+}
 
 export const IPC = {
   APP_SNAPSHOT: "app:snapshot",
@@ -96,9 +103,19 @@ export interface AppSnapshot {
   health: RuntimeHealth[];
   khepree: KhepreePublicState;
   gemini: GeminiPublicState;
+  /** @deprecated Prefer `lives[].tiktok` / registry getAllStates — focused shim only. */
   tiktok: TikTokPublicState;
+  /** @deprecated Prefer `lives[].liveManager` — focused shim only. */
   liveManager: LiveManagerPublicState;
   comments: CommentFeedSnapshot;
+  /** Present when startup closed stale live sessions left by a crash. */
+  sessionRecovery?: SessionRecoveryNotice;
+  /** Soft display of license max concurrent lives (not hardware). */
+  maxConcurrentLives: number;
+  /** Khepree license caps — separate from hardware ResourceGovernor. */
+  licenseLimits: LivestreamLicenseLimits;
+  /** Pending approvals from all accounts (capped) — Live Center queue. */
+  pendingApprovals: ApprovalItem[];
 }
 
 /**
@@ -133,9 +150,9 @@ export interface RendererApi {
   refreshLiveManager(accountId: string): Promise<LiveManagerPublicState>;
   captureLiveManagerDiagnostic(accountId: string): Promise<LiveManagerPublicState>;
 
-  pinComment(eventId: string): Promise<void>;
-  markCommentReplied(eventId: string): Promise<void>;
-  skipComment(eventId: string): Promise<void>;
+  pinComment(accountId: string, eventId: string): Promise<void>;
+  markCommentReplied(accountId: string, eventId: string): Promise<void>;
+  skipComment(accountId: string, eventId: string): Promise<void>;
 
   /** Catalog save — does not bind current product unless setCurrentProduct is called. */
   saveProduct(product: ProductDNA): Promise<void>;

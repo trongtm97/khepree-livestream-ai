@@ -1,21 +1,21 @@
 # Khepree Livestream AI
 
-Foundation repository for a Windows desktop application that helps one human operator run a TikTok commerce livestream with AI assistance.
+Windows desktop app that helps one human operator run **one or many** TikTok commerce livestreams with AI assistance.
 
 **Product philosophy:** human-supervised autonomy. AI handles repetitive work; the operator can approve, edit, cancel, or take over at any time.
 
-## What is implemented in this foundation
+**Current milestone:** Development **0.2.x** (multi-live core wired). package version remains `0.1.0` until a deliberate release.
 
-- Secure Electron process boundary.
-- React operator dashboard.
-- Local SQLite schema for products, sessions, events, approval queue, and settings.
-- Provider interfaces for LLM, TikTok events, media/avatar output, and browser automation.
-- Gemini Web sidecar contract using `gemini_webapi` (HanaokaYuzu/Gemini-API) without copying that AGPL project into this proprietary repository.
-- TikTokLive sidecar contract for unofficial realtime comments/events, again isolated as a separate process.
-- TikTok LIVE Manager Playwright observer scaffold.
-- Livestream Event Bus, Sales State Machine, comment priority scorer, Approval Engine, and Live Orchestrator.
-- Khepree commercial licensing foundation modeled after Khepree Novel AI: PKCE, device Ed25519 identity, encrypted refresh token, signed lease verification, heartbeat state, and fail-closed protected actions.
-- Dev-mock adapters so later AI coding agents can extend the system without destroying the architecture.
+## What works in this milestone
+
+- Secure Electron process boundary + typed preload API.
+- React operator UI with VI/EN i18n, Live Center, Account Detail, help, errors/toasts.
+- Local SQLite multi-live model (accounts, settings, sessions, events, approvals, products).
+- Per-account live runtimes, TikTok connectors, LIVE Manager profiles.
+- Comment feed + approval queue isolation across accounts.
+- Fair AI request scheduler + license/hardware capacity gates.
+- Gemini Web + TikTokLive Python sidecars (replaceable adapters).
+- Vitest release-blocker suite + GitHub Actions CI.
 
 ## First run
 
@@ -23,11 +23,13 @@ Foundation repository for a Windows desktop application that helps one human ope
 npm install
 copy .env.example .env
 npm run doctor
+npm run typecheck
+npm test
 npm run test:foundation
 npm start
 ```
 
-For Gemini worker dependencies:
+For Gemini / TikTok worker Python deps:
 
 ```bash
 python -m venv worker-env
@@ -35,22 +37,22 @@ worker-env\Scripts\pip install -r workers/gemini_worker/requirements.txt
 worker-env\Scripts\pip install -r workers/tiktok_worker/requirements.txt
 ```
 
-Then log in to Gemini in Firefox or provide the two Gemini cookies through a future encrypted settings UI. The worker itself never asks for a Google password.
+## Tests
+
+| Script | Purpose |
+| --- | --- |
+| `npm test` | Full Vitest suite |
+| `npm run test:unit` | Unit / contract helpers |
+| `npm run test:multi-live` | Multi-live + connectors + comments + scheduler + recovery |
+| `npm run test:foundation` | Static architecture/file contracts |
+| `npm run test:legacy:*` | Original assert self-checks (still kept) |
 
 ## Data location
 
-All persistent user data is intended to live under:
+`%APPDATA%\KhepreeLivestreamAI\` — `data/app.sqlite`, `secrets/`, `browser-profiles/`, `logs/`, `diagnostics/`.
 
-`%APPDATA%\KhepreeLivestreamAI\`
+## Important honesty
 
-- `data/app.sqlite`
-- `secrets/`
-- `browser-profiles/`
-- `logs/`
-- `diagnostics/`
+This is **not** a production claim. Real TikTok, Gemini, Khepree production lease, and Windows installer smoke are **not** validated yet. Reverse-engineered web connectors can break; they stay behind replaceable adapters.
 
-## Important
-
-This is a **foundation build**, not a production claim. Reverse-engineered web connectors can break when upstream websites change. They are intentionally isolated behind replaceable adapters.
-
-See `docs/PROJECT_STATE.md` and `docs/NEXT_IMPLEMENTATION_PHASES.md`.
+See `docs/PROJECT_STATE.md`, `docs/FEATURE_MATRIX.md`, `docs/MULTI_LIVE_ARCHITECTURE.md`.

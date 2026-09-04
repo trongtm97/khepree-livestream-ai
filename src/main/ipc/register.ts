@@ -34,28 +34,53 @@ function focusAccount(container: AppContainer, id: string): void {
   container.settings.setFocusedAccountId(id);
 }
 
+function enrichLiveSnapshot(
+  container: AppContainer,
+  snap: AccountLiveSnapshot
+): AccountLiveSnapshot {
+  const tiktok = container.tiktok.getState(snap.accountId);
+  const liveManager = container.liveManager.getState(snap.accountId);
+  return {
+    ...snap,
+    ...(tiktok ? { tiktok } : {}),
+    ...(liveManager ? { liveManager } : {})
+  };
+}
+
 export function registerIpc(container: AppContainer): void {
   ipcMain.handle(IPC.APP_SNAPSHOT, async (): Promise<AppSnapshot> => {
     const pane = legacyFocusedPane(container);
+    const focusedId = container.multiLive.focusedId;
     return {
       appVersion: app.getVersion(),
       locale: container.settings.getLocale(),
       onboarding: container.settings.getOnboarding(),
       ...pane,
-      lives: container.multiLive.getAllSnapshots(),
-      focusedAccountId: container.multiLive.focusedId,
+      lives: container.multiLive.getAllSnapshots().map((s) => enrichLiveSnapshot(container, s)),
+      focusedAccountId: focusedId,
       products: container.products.list(),
       health: [
         await container.llm.health(),
-        await container.tiktok.health(),
-        await container.liveManager.health(),
+        await container.tiktok.health(focusedId),
+        await container.liveManager.health(focusedId),
         await container.media.health()
       ],
       khepree: container.khepree.publicState,
       gemini: await container.llm.getPublicState(),
-      tiktok: container.tiktok.getPublicState(),
-      liveManager: container.liveManager.getPublicState(),
-      comments: container.comments.getSnapshot()
+      tiktok: container.tiktok.getPublicState(focusedId),
+      liveManager: container.liveManager.getPublicState(focusedId),
+      comments: container.comments.getSnapshot(),
+      maxConcurrentLives: container.capacity.getLicenseLimits().maxConcurrentLives,
+      licenseLimits: container.capacity.getLicenseLimits(),
+      pendingApprovals: container.multiLive.listAllPendingApprovals().slice(0, 40),
+      sessionRecovery: (() => {
+        const report = container.getSessionRecoveryReport();
+        if (report.recoveredCount <= 0) return undefined;
+        return {
+          recoveredCount: report.recoveredCount,
+          recoveredAt: report.recoveredAt
+        };
+      })()
     };
   });
 
@@ -63,12 +88,14 @@ export function registerIpc(container: AppContainer): void {
     IPC.LIVE_ACCOUNT_SNAPSHOT,
     async (_event, rawAccountId: unknown): Promise<AccountLiveSnapshot> => {
       const id = accountId(container, rawAccountId);
-      return container.multiLive.getSnapshot(id);
+      return enrichLiveSnapshot(container, container.multiLive.getSnapshot(id));
     }
   );
 
   ipcMain.handle(IPC.LIVE_MULTI_SNAPSHOT, async (): Promise<MultiLiveSnapshot> => {
-    const lives = container.multiLive.getAllSnapshots();
+    const lives = container.multiLive
+      .getAllSnapshots()
+      .map((s) => enrichLiveSnapshot(container, s));
     return {
       lives,
       focusedAccountId: container.multiLive.focusedId,
@@ -218,6 +245,7 @@ export function registerIpc(container: AppContainer): void {
       input: { username?: string; displayName?: string; label?: string }
     ) => {
       container.khepree.assertProductAccess();
+      container.capacity.assertCanCreateAccount(container.tiktokAccounts.list().length);
       const username = String(input?.username ?? "").trim();
       if (!username) throw new Error("TIKTOK_USERNAME_REQUIRED");
       const created = container.tiktokAccounts.create({
@@ -259,6 +287,8 @@ export function registerIpc(container: AppContainer): void {
   ipcMain.handle(IPC.ACCOUNT_DELETE, async (_event, rawAccountId: unknown) => {
     container.khepree.assertProductAccess();
     const id = accountId(container, rawAccountId);
+    await container.tiktok.disposeAccount(id);
+    await container.liveManager.dispose(id);
     container.tiktokAccounts.delete(id);
     container.multiLive.disposeAccount(id);
     if (container.settings.getFocusedAccountId() === id) {
@@ -342,60 +372,57 @@ export function registerIpc(container: AppContainer): void {
   ipcMain.handle(IPC.TIKTOK_CONNECT, async (_event, rawAccountId: unknown) => {
     const id = accountId(container, rawAccountId);
     focusAccount(container, id);
-    const account = container.tiktokAccounts.get(id)!;
-    container.settings.setTikTokUniqueId(account.username);
-    const state = await container.tiktok.connect(account.username);
-    container.tiktokAccounts.update(id, {
-      lastConnectedAt: new Date().toISOString()
-    });
-    return state;
+    return container.tiktok.connect(id);
   });
 
   ipcMain.handle(IPC.TIKTOK_DISCONNECT, async (_event, rawAccountId: unknown) => {
-    accountId(container, rawAccountId);
-    return container.tiktok.disconnect();
+    const id = accountId(container, rawAccountId);
+    return container.tiktok.disconnect(id);
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_OPEN, async (_event, rawAccountId: unknown) => {
     container.khepree.assertProductAccess();
     const id = accountId(container, rawAccountId);
     focusAccount(container, id);
-    const account = container.tiktokAccounts.get(id)!;
-    return container.liveManager.open(account.profileKey);
+    return container.liveManager.open(id);
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_CLOSE, async (_event, rawAccountId: unknown) => {
-    accountId(container, rawAccountId);
-    return container.liveManager.close();
+    const id = accountId(container, rawAccountId);
+    return container.liveManager.close(id);
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_REFRESH, async (_event, rawAccountId: unknown) => {
-    accountId(container, rawAccountId);
-    return container.liveManager.refresh();
+    const id = accountId(container, rawAccountId);
+    return container.liveManager.refresh(id);
   });
 
   ipcMain.handle(IPC.LIVE_MANAGER_DIAGNOSTIC, async (_event, rawAccountId: unknown) => {
-    accountId(container, rawAccountId);
-    return container.liveManager.captureDiagnostic();
+    const id = accountId(container, rawAccountId);
+    return container.liveManager.captureDiagnostic(id);
   });
 
-  ipcMain.handle(IPC.COMMENT_PIN, async (_event, eventId: string) => {
-    const id = String(eventId ?? "").trim();
-    if (!id) throw new Error("COMMENT_ID_REQUIRED");
-    if (!container.comments.setOperatorPriority(id, true)) {
-      throw new Error("COMMENT_NOT_FOUND");
+  ipcMain.handle(IPC.COMMENT_PIN, async (_event, rawAccountId: unknown, eventId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    const eid = String(eventId ?? "").trim();
+    if (!eid) throw new Error("COMMENT_ID_REQUIRED");
+    container.comments.setOperatorPriority(id, eid, true);
+  });
+
+  ipcMain.handle(
+    IPC.COMMENT_MARK_REPLIED,
+    async (_event, rawAccountId: unknown, eventId: unknown) => {
+      const id = accountId(container, rawAccountId);
+      const eid = String(eventId ?? "").trim();
+      if (!eid) throw new Error("COMMENT_ID_REQUIRED");
+      container.comments.markReplied(id, eid);
     }
-  });
+  );
 
-  ipcMain.handle(IPC.COMMENT_MARK_REPLIED, async (_event, eventId: string) => {
-    const id = String(eventId ?? "").trim();
-    if (!id) throw new Error("COMMENT_ID_REQUIRED");
-    if (!container.comments.markReplied(id)) throw new Error("COMMENT_NOT_FOUND");
-  });
-
-  ipcMain.handle(IPC.COMMENT_SKIP, async (_event, eventId: string) => {
-    const id = String(eventId ?? "").trim();
-    if (!id) throw new Error("COMMENT_ID_REQUIRED");
-    if (!container.comments.markSkipped(id)) throw new Error("COMMENT_NOT_FOUND");
+  ipcMain.handle(IPC.COMMENT_SKIP, async (_event, rawAccountId: unknown, eventId: unknown) => {
+    const id = accountId(container, rawAccountId);
+    const eid = String(eventId ?? "").trim();
+    if (!eid) throw new Error("COMMENT_ID_REQUIRED");
+    container.comments.markSkipped(id, eid);
   });
 }

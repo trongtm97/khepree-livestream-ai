@@ -3,17 +3,53 @@ import { HttpWorkerProcess } from "../../workers/http-worker-process";
 import type { LiveEvent, RuntimeHealth } from "../../../shared/live-types";
 import type { TikTokProvider } from "./types";
 
+export type TikTokWorkerProviderOptions = {
+  appRoot: string;
+  /** Safe process name segment (no raw username). */
+  workerName?: string;
+  pythonExecutable?: string;
+  startupTimeoutMs?: number;
+  /** Test seam — inject a started/stub worker. */
+  worker?: HttpWorkerProcess;
+};
+
 export class TikTokWorkerProvider implements TikTokProvider {
   private readonly worker: HttpWorkerProcess;
   private started = false;
 
-  constructor(appRoot: string, pythonExecutable = "python", startupTimeoutMs = 20000) {
-    this.worker = new HttpWorkerProcess({
-      name: "tiktok-worker",
-      scriptPath: path.join(appRoot, "workers", "tiktok_worker", "app.py"),
-      pythonExecutable,
-      startupTimeoutMs
-    });
+  constructor(
+    appRootOrOpts: string | TikTokWorkerProviderOptions,
+    pythonExecutable = "python",
+    startupTimeoutMs = 20000
+  ) {
+    const opts: TikTokWorkerProviderOptions =
+      typeof appRootOrOpts === "string"
+        ? { appRoot: appRootOrOpts, pythonExecutable, startupTimeoutMs }
+        : appRootOrOpts;
+
+    this.worker =
+      opts.worker ??
+      new HttpWorkerProcess({
+        name: opts.workerName ?? "tiktok-worker",
+        scriptPath: path.join(opts.appRoot, "workers", "tiktok_worker", "app.py"),
+        pythonExecutable:
+          opts.pythonExecutable ?? process.env.KHEPREE_PYTHON ?? "python",
+        startupTimeoutMs:
+          opts.startupTimeoutMs ??
+          Number(process.env.KHEPREE_WORKER_STARTUP_TIMEOUT_MS ?? 20000)
+      });
+  }
+
+  get workerName(): string {
+    return this.worker.name;
+  }
+
+  get listenPort(): number | undefined {
+    return this.worker.listenPort;
+  }
+
+  get workerToken(): string | undefined {
+    return this.worker.workerToken;
   }
 
   isStarted(): boolean {
@@ -132,4 +168,10 @@ export function normalizeUniqueId(raw: string): string {
   const trimmed = raw.trim().replace(/^@+/, "");
   if (!trimmed) return "";
   return `@${trimmed}`;
+}
+
+/** Short safe id for worker process names — never embed raw usernames. */
+export function shortAccountWorkerId(accountId: string): string {
+  const cleaned = accountId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
+  return cleaned || "acct";
 }

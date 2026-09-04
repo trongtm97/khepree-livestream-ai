@@ -17,10 +17,13 @@ export function resolveAppError(error: unknown, locale: AppLocale): ResolvedAppE
   const parsed = parseUnknownError(error);
   const copy = getErrorCopy(parsed.code);
   const technicalDetails = safeTechnicalDetails(parsed);
+  const max = parsed.rawDetail?.match(/^\d+$/)?.[0];
+  const fill = (text: string) =>
+    max !== undefined ? text.replaceAll("{max}", max) : text.replaceAll("{max}", "—");
 
   return {
-    title: copy.title[locale] || copy.title.vi,
-    userMessage: copy.userMessage[locale] || copy.userMessage.vi,
+    title: fill(copy.title[locale] || copy.title.vi),
+    userMessage: fill(copy.userMessage[locale] || copy.userMessage.vi),
     recommendedActions: copy.recommendedActions[locale] || copy.recommendedActions.vi,
     technicalCode: parsed.code,
     technicalDetails,

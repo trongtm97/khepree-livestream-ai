@@ -46,20 +46,42 @@ const AI_LABEL: Record<CommentAiStatus, MessageKey> = {
   SKIPPED: "comments.ai.SKIPPED"
 };
 
+const ACCOUNT_ALL = "__all__";
+
 /** Soft render cap on top of main snapshot cap — no unbounded list. */
 const RENDER_CAP = 150;
 
 export function CommentsPage({ snapshot }: { snapshot: AppSnapshot }) {
   const { t, run, refresh, setTab } = useAppShell();
   const [filter, setFilter] = useState<CommentFeedFilter>("all");
+  const [accountFilter, setAccountFilter] = useState<string>(ACCOUNT_ALL);
+
+  const accountMap = useMemo(() => {
+    const map = new Map<string, { label: string; username: string }>();
+    for (const live of snapshot.lives) {
+      map.set(live.accountId, {
+        label: live.label?.trim() || live.username.replace(/^@/, ""),
+        username: live.username.replace(/^@/, "")
+      });
+    }
+    return map;
+  }, [snapshot.lives]);
+
+  const scopedItems = useMemo(() => {
+    if (accountFilter === ACCOUNT_ALL) return snapshot.comments.items;
+    return snapshot.comments.items.filter((item) => item.accountId === accountFilter);
+  }, [snapshot.comments.items, accountFilter]);
 
   const filtered = useMemo(() => {
-    const rows = snapshot.comments.items.filter((item) => matchesCommentFilter(item, filter));
+    const rows = scopedItems.filter((item) => matchesCommentFilter(item, filter));
     return rows.slice(0, RENDER_CAP);
-  }, [snapshot.comments.items, filter]);
+  }, [scopedItems, filter]);
 
-  const empty = snapshot.comments.total === 0;
-  const tiktokConnected = snapshot.tiktok.connected;
+  const empty = scopedItems.length === 0;
+  const showShopBadge = accountFilter === ACCOUNT_ALL;
+  const anyTikTokConnected =
+    snapshot.tiktok.connected ||
+    snapshot.lives.some((l) => l.tiktok?.connected);
 
   return (
     <div className="page commentsPage">
@@ -71,6 +93,24 @@ export function CommentsPage({ snapshot }: { snapshot: AppSnapshot }) {
           </div>
           <MessageCircle />
         </div>
+
+        <label className="commentAccountFilter">
+          <span>{t("comments.accountFilterLabel")}</span>
+          <select
+            value={accountFilter}
+            onChange={(e) => setAccountFilter(e.target.value)}
+            aria-label={t("comments.accountFilterLabel")}
+          >
+            <option value={ACCOUNT_ALL}>{t("comments.accountAll")}</option>
+            {snapshot.lives.map((live) => (
+              <option key={live.accountId} value={live.accountId}>
+                {(live.label?.trim() || live.username.replace(/^@/, "")) +
+                  " · @" +
+                  live.username.replace(/^@/, "")}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="commentFilters" role="tablist" aria-label={t("comments.filtersLabel")}>
           {FILTERS.map((f) => (
@@ -91,7 +131,7 @@ export function CommentsPage({ snapshot }: { snapshot: AppSnapshot }) {
           <span>
             {t("comments.showing", {
               shown: filtered.length,
-              total: snapshot.comments.total
+              total: scopedItems.length
             })}
           </span>
           {snapshot.comments.capped || filtered.length >= RENDER_CAP ? (
@@ -103,7 +143,7 @@ export function CommentsPage({ snapshot }: { snapshot: AppSnapshot }) {
           <div className="commentEmpty" role="status">
             <p>{t("comments.emptyTitle")}</p>
             <p>{t("comments.emptyBody")}</p>
-            {!tiktokConnected ? (
+            {!anyTikTokConnected ? (
               <button type="button" className="primary" onClick={() => setTab("connections")}>
                 {t("comments.goConnect")}
               </button>
@@ -119,21 +159,26 @@ export function CommentsPage({ snapshot }: { snapshot: AppSnapshot }) {
               <CommentRow
                 key={item.id}
                 item={item}
+                shop={accountMap.get(item.accountId)}
+                showShopBadge={showShopBadge}
                 onPin={() =>
                   void run(async () => {
-                    await window.khepreeLivestreamAI.pinComment(item.eventId);
+                    await window.khepreeLivestreamAI.pinComment(item.accountId, item.eventId);
                     await refresh();
                   })
                 }
                 onReplied={() =>
                   void run(async () => {
-                    await window.khepreeLivestreamAI.markCommentReplied(item.eventId);
+                    await window.khepreeLivestreamAI.markCommentReplied(
+                      item.accountId,
+                      item.eventId
+                    );
                     await refresh();
                   })
                 }
                 onSkip={() =>
                   void run(async () => {
-                    await window.khepreeLivestreamAI.skipComment(item.eventId);
+                    await window.khepreeLivestreamAI.skipComment(item.accountId, item.eventId);
                     await refresh();
                   })
                 }
@@ -148,11 +193,15 @@ export function CommentsPage({ snapshot }: { snapshot: AppSnapshot }) {
 
 function CommentRow({
   item,
+  shop,
+  showShopBadge,
   onPin,
   onReplied,
   onSkip
 }: {
   item: CommentFeedItem;
+  shop?: { label: string; username: string };
+  showShopBadge: boolean;
   onPin: () => void;
   onReplied: () => void;
   onSkip: () => void;
@@ -176,6 +225,11 @@ function CommentRow({
           {item.username ? <span className="commentUser">@{item.username.replace(/^@/, "")}</span> : null}
           <time dateTime={item.timestamp}>{time}</time>
         </div>
+        {showShopBadge && shop ? (
+          <span className="commentShopBadge">
+            {t("comments.shopBadge", { label: shop.label, username: shop.username })}
+          </span>
+        ) : null}
         <p className="commentText">{item.text || "—"}</p>
         <div className="commentTags">
           <span className="commentTag priority">{t("comments.priority", { score: item.priority })}</span>

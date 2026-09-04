@@ -30,6 +30,8 @@ export const ERROR_CODES = {
   // Comments
   COMMENT_ID_REQUIRED: "COMMENT_ID_REQUIRED",
   COMMENT_NOT_FOUND: "COMMENT_NOT_FOUND",
+  COMMENT_ACCOUNT_ID_MISSING: "COMMENT_ACCOUNT_ID_MISSING",
+  COMMENT_ACCOUNT_MISMATCH: "COMMENT_ACCOUNT_MISMATCH",
 
   // Gemini
   GEMINI_NOT_CONNECTED: "GEMINI_NOT_CONNECTED",
@@ -80,6 +82,20 @@ export const ERROR_CODES = {
   PRODUCT_NOT_FOUND: "PRODUCT_NOT_FOUND",
   PRODUCT_ID_REQUIRED: "PRODUCT_ID_REQUIRED",
   PRODUCT_INVALID: "PRODUCT_INVALID",
+
+  // License capacity (Khepree plan — not hardware)
+  LICENSE_MAX_CONCURRENT_LIVES: "LICENSE_MAX_CONCURRENT_LIVES",
+  LICENSE_MAX_TIKTOK_ACCOUNTS: "LICENSE_MAX_TIKTOK_ACCOUNTS",
+  LICENSE_MULTI_LIVE_REQUIRED: "LICENSE_MULTI_LIVE_REQUIRED",
+
+  // Hardware capacity (ResourceGovernor — not license)
+  HARDWARE_RAM_LOW: "HARDWARE_RAM_LOW",
+  HARDWARE_CPU_HIGH: "HARDWARE_CPU_HIGH",
+  HARDWARE_TOO_MANY_RUNTIMES: "HARDWARE_TOO_MANY_RUNTIMES",
+  HARDWARE_TOO_MANY_TIKTOK_WORKERS: "HARDWARE_TOO_MANY_TIKTOK_WORKERS",
+  HARDWARE_TOO_MANY_BROWSER_CONTEXTS: "HARDWARE_TOO_MANY_BROWSER_CONTEXTS",
+  HARDWARE_AI_QUEUE_BACKLOG: "HARDWARE_AI_QUEUE_BACKLOG",
+  HARDWARE_CAPACITY: "HARDWARE_CAPACITY",
 
   UNKNOWN: "UNKNOWN"
 } as const;
@@ -201,6 +217,16 @@ export const ERROR_META: Record<string, ErrorCatalogMeta> = {
     code: ERROR_CODES.COMMENT_NOT_FOUND,
     group: "system",
     severity: "warning"
+  },
+  [ERROR_CODES.COMMENT_ACCOUNT_ID_MISSING]: {
+    code: ERROR_CODES.COMMENT_ACCOUNT_ID_MISSING,
+    group: "system",
+    severity: "error"
+  },
+  [ERROR_CODES.COMMENT_ACCOUNT_MISMATCH]: {
+    code: ERROR_CODES.COMMENT_ACCOUNT_MISMATCH,
+    group: "system",
+    severity: "error"
   },
   [ERROR_CODES.GEMINI_NOT_CONNECTED]: {
     code: ERROR_CODES.GEMINI_NOT_CONNECTED,
@@ -360,6 +386,56 @@ export const ERROR_META: Record<string, ErrorCatalogMeta> = {
   [ERROR_CODES.PRODUCT_INVALID]: {
     code: ERROR_CODES.PRODUCT_INVALID,
     group: "product",
+    severity: "warning"
+  },
+  [ERROR_CODES.LICENSE_MAX_CONCURRENT_LIVES]: {
+    code: ERROR_CODES.LICENSE_MAX_CONCURRENT_LIVES,
+    group: "khepree",
+    severity: "warning"
+  },
+  [ERROR_CODES.LICENSE_MAX_TIKTOK_ACCOUNTS]: {
+    code: ERROR_CODES.LICENSE_MAX_TIKTOK_ACCOUNTS,
+    group: "khepree",
+    severity: "warning"
+  },
+  [ERROR_CODES.LICENSE_MULTI_LIVE_REQUIRED]: {
+    code: ERROR_CODES.LICENSE_MULTI_LIVE_REQUIRED,
+    group: "khepree",
+    severity: "warning"
+  },
+  [ERROR_CODES.HARDWARE_RAM_LOW]: {
+    code: ERROR_CODES.HARDWARE_RAM_LOW,
+    group: "system",
+    severity: "warning"
+  },
+  [ERROR_CODES.HARDWARE_CPU_HIGH]: {
+    code: ERROR_CODES.HARDWARE_CPU_HIGH,
+    group: "system",
+    severity: "warning"
+  },
+  [ERROR_CODES.HARDWARE_TOO_MANY_RUNTIMES]: {
+    code: ERROR_CODES.HARDWARE_TOO_MANY_RUNTIMES,
+    group: "system",
+    severity: "warning"
+  },
+  [ERROR_CODES.HARDWARE_TOO_MANY_TIKTOK_WORKERS]: {
+    code: ERROR_CODES.HARDWARE_TOO_MANY_TIKTOK_WORKERS,
+    group: "system",
+    severity: "warning"
+  },
+  [ERROR_CODES.HARDWARE_TOO_MANY_BROWSER_CONTEXTS]: {
+    code: ERROR_CODES.HARDWARE_TOO_MANY_BROWSER_CONTEXTS,
+    group: "system",
+    severity: "warning"
+  },
+  [ERROR_CODES.HARDWARE_AI_QUEUE_BACKLOG]: {
+    code: ERROR_CODES.HARDWARE_AI_QUEUE_BACKLOG,
+    group: "system",
+    severity: "warning"
+  },
+  [ERROR_CODES.HARDWARE_CAPACITY]: {
+    code: ERROR_CODES.HARDWARE_CAPACITY,
+    group: "system",
     severity: "warning"
   },
   [ERROR_CODES.UNKNOWN]: {

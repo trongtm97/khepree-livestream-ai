@@ -9,7 +9,9 @@
   "protocols": [
     {
       "name": "Khepree Livestream AI",
-      "schemes": ["khepreelivestreamai"]
+      "schemes": [
+        "khepreelivestreamai"
+      ]
     }
   ],
   "scripts": {
@@ -18,12 +20,22 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:multi-live": "vitest run tests/database tests/multi-live tests/tiktok tests/comments tests/llm-scheduler tests/approval tests/session-recovery",
+    "test:watch": "vitest",
     "test:foundation": "node scripts/foundation-check.mjs",
-    "test:multi-live": "npx --yes tsx src/main/db/multi-live-self-check.ts",
-    "test:live-runtime": "npx --yes tsx src/main/live/live-runtime-self-check.ts",
-    "test:multi-live-manager": "npx --yes tsx src/main/live/multi-live-manager-self-check.ts",
-    "test:account-aware-ipc": "npx --yes tsx src/main/ipc/account-aware-ipc-self-check.ts",
-    "test:sales-brain": "npx --yes tsx src/shared/sales-brain/self-check.ts",
+    "test:legacy:multi-live-domain": "tsx src/main/db/multi-live-self-check.ts",
+    "test:legacy:live-runtime": "tsx src/main/live/live-runtime-self-check.ts",
+    "test:legacy:multi-live-manager": "tsx src/main/live/multi-live-manager-self-check.ts",
+    "test:legacy:account-aware-ipc": "tsx src/main/ipc/account-aware-ipc-self-check.ts",
+    "test:legacy:multi-tiktok": "tsx src/main/connectors/tiktok/multi-tiktok-self-check.ts",
+    "test:legacy:multi-live-manager-registry": "tsx src/main/connectors/tiktok/multi-live-manager-registry-self-check.ts",
+    "test:legacy:comment-feed": "tsx src/main/live/comment-feed-self-check.ts",
+    "test:legacy:session-recovery": "tsx src/main/live/live-session-recovery-self-check.ts",
+    "test:legacy:ai-scheduler": "tsx src/main/live/ai-request-scheduler-self-check.ts",
+    "test:legacy:live-capacity": "tsx src/main/live/live-capacity-self-check.ts",
+    "test:legacy:sales-brain": "tsx src/shared/sales-brain/self-check.ts",
     "doctor": "node scripts/dev-doctor.mjs",
     "worker:gemini": "python workers/gemini_worker/app.py",
     "worker:tiktok": "python workers/tiktok_worker/app.py"
@@ -52,7 +64,9 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^43.5.1",
+    "tsx": "^4.20.5",
     "typescript": "^5.7.2",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^3.2.4"
   }
 }
